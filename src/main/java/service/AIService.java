@@ -14,7 +14,7 @@ public class AIService {
     }
 
     public String generate(String message) {
-        return generate(message, "fast");
+        return generate(message, "swift");
     }
 
     public String generate(String message, String mode) {
@@ -25,11 +25,10 @@ public class AIService {
 
         String providerName = System.getenv()
                 .getOrDefault("AI_PROVIDER", "openai")
-                .toLowerCase();
+                .toLowerCase()
+                .trim();
 
-        String selectedMode = mode == null || mode.isBlank()
-                ? "fast"
-                : mode.toLowerCase();
+        String selectedMode = normalizeMode(mode);
 
         for (AIProvider provider : providers) {
 
@@ -37,28 +36,63 @@ public class AIService {
                     .getSimpleName()
                     .toLowerCase();
 
-            if (className.startsWith(providerName)) {
-
-                if (provider instanceof OpenAIProvider openAIProvider) {
-                    return openAIProvider.generate(message, selectedMode);
-                }
-
-                if (provider instanceof GeminiProvider geminiProvider) {
-                    return geminiProvider.generate(message, selectedMode);
-                }
-
-                if (provider instanceof AnthropicProvider anthropicProvider) {
-                    return anthropicProvider.generate(message, selectedMode);
-                }
-
-                if (provider instanceof CustomAIProvider customAIProvider) {
-                    return customAIProvider.generate(message, selectedMode);
-                }
-
-                return provider.generate(message);
+            if (!className.startsWith(providerName)) {
+                continue;
             }
+
+            if (provider instanceof OpenAIProvider openAIProvider) {
+                return openAIProvider.generate(
+                        message,
+                        selectedMode
+                );
+            }
+
+            if (provider instanceof GeminiProvider geminiProvider) {
+                return geminiProvider.generate(
+                        message,
+                        selectedMode
+                );
+            }
+
+            if (provider instanceof AnthropicProvider anthropicProvider) {
+                return anthropicProvider.generate(
+                        message,
+                        selectedMode
+                );
+            }
+
+            if (provider instanceof CustomAIProvider customAIProvider) {
+                return customAIProvider.generate(
+                        message,
+                        selectedMode
+                );
+            }
+
+            return provider.generate(message);
         }
 
         return "AI provider not configured: " + providerName;
+    }
+
+    private String normalizeMode(String mode) {
+
+        if (mode == null || mode.isBlank()) {
+            return "swift";
+        }
+
+        return switch (mode.toLowerCase().trim()) {
+
+            case "swift", "fast" ->
+                    "swift";
+
+            case "deep" ->
+                    "deep";
+
+            case "prime", "powerful" ->
+                    "prime";
+
+            default ->
+                    "swift";
+        };
     }
 }
