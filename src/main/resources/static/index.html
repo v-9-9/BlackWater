@@ -19,7 +19,6 @@
             --border: #292930;
             --text: #ffffff;
             --muted: #92929d;
-            --accent: #ffffff;
             --danger: #ff5f56;
         }
 
@@ -33,7 +32,8 @@
         }
 
         button,
-        textarea {
+        textarea,
+        select {
             font-family: inherit;
         }
 
@@ -326,6 +326,11 @@
             background: #dddddd;
         }
 
+        .send:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         /* SETTINGS */
 
         .settings-overlay {
@@ -484,14 +489,17 @@
             Conversations
         </div>
 
-        <div class="conversations" id="conversations"></div>
+        <div
+            class="conversations"
+            id="conversations"
+        ></div>
 
         <div class="sidebar-bottom">
             <button
                 class="settings-button"
                 onclick="openSettings()"
             >
-                ⚙ Settings
+                Settings
             </button>
         </div>
 
@@ -524,9 +532,15 @@
 
         </div>
 
-        <div class="messages" id="messages">
+        <div
+            class="messages"
+            id="messages"
+        >
 
-            <div class="welcome" id="welcome">
+            <div
+                class="welcome"
+                id="welcome"
+            >
 
                 <div>
 
@@ -554,26 +568,26 @@
 
                     <button
                         class="mode-button active"
-                        data-mode="veyra"
-                        onclick="selectMode('veyra')"
+                        data-mode="swift"
+                        onclick="selectMode('swift')"
                     >
-                        Veyra
+                        Blackwater Swift
                     </button>
 
                     <button
                         class="mode-button"
-                        data-mode="noctis"
-                        onclick="selectMode('noctis')"
+                        data-mode="deep"
+                        onclick="selectMode('deep')"
                     >
-                        Noctis
+                        Blackwater Deep
                     </button>
 
                     <button
                         class="mode-button"
-                        data-mode="aether"
-                        onclick="selectMode('aether')"
+                        data-mode="prime"
+                        onclick="selectMode('prime')"
                     >
-                        Aether
+                        Blackwater Prime
                     </button>
 
                 </div>
@@ -589,6 +603,7 @@
 
                     <button
                         class="send"
+                        id="sendButton"
                         onclick="sendMessage()"
                     >
                         ↑
@@ -640,29 +655,12 @@
 
             <select id="language">
 
-                <option value="auto">
-                    Auto
-                </option>
-
-                <option value="ar">
-                    العربية
-                </option>
-
-                <option value="en">
-                    English
-                </option>
-
-                <option value="tr">
-                    Türkçe
-                </option>
-
-                <option value="fr">
-                    Français
-                </option>
-
-                <option value="es">
-                    Español
-                </option>
+                <option value="auto">Auto</option>
+                <option value="ar">العربية</option>
+                <option value="en">English</option>
+                <option value="tr">Türkçe</option>
+                <option value="fr">Français</option>
+                <option value="es">Español</option>
 
             </select>
 
@@ -678,29 +676,12 @@
 
             <select id="dialect">
 
-                <option value="auto">
-                    Auto
-                </option>
-
-                <option value="iraqi">
-                    Iraqi
-                </option>
-
-                <option value="gulf">
-                    Gulf
-                </option>
-
-                <option value="egyptian">
-                    Egyptian
-                </option>
-
-                <option value="levantine">
-                    Levantine
-                </option>
-
-                <option value="msa">
-                    Modern Standard Arabic
-                </option>
+                <option value="auto">Auto</option>
+                <option value="iraqi">Iraqi</option>
+                <option value="gulf">Gulf</option>
+                <option value="egyptian">Egyptian</option>
+                <option value="levantine">Levantine</option>
+                <option value="msa">Modern Standard Arabic</option>
 
             </select>
 
@@ -716,17 +697,9 @@
 
             <select id="defaultMode">
 
-                <option value="veyra">
-                    Veyra
-                </option>
-
-                <option value="noctis">
-                    Noctis
-                </option>
-
-                <option value="aether">
-                    Aether
-                </option>
+                <option value="swift">Blackwater Swift</option>
+                <option value="deep">Blackwater Deep</option>
+                <option value="prime">Blackwater Prime</option>
 
             </select>
 
@@ -773,7 +746,13 @@
 <script>
 
     let currentConversationId = null;
-    let currentMode = localStorage.getItem("blackwater-mode") || "veyra";
+
+    let currentMode =
+        localStorage.getItem("blackwater-mode")
+        || "swift";
+
+    let sending = false;
+
 
     function selectMode(mode) {
 
@@ -784,15 +763,25 @@
             mode
         );
 
-        document.querySelectorAll(".mode-button").forEach(button => {
+        document
+            .querySelectorAll(".mode-button")
+            .forEach(button => {
 
-            button.classList.toggle(
-                "active",
-                button.dataset.mode === mode
-            );
+                button.classList.toggle(
+                    "active",
+                    button.dataset.mode === mode
+                );
 
-        });
+            });
+
+        const defaultMode =
+            document.getElementById("defaultMode");
+
+        if (defaultMode) {
+            defaultMode.value = mode;
+        }
     }
+
 
     function toggleSidebar() {
 
@@ -801,12 +790,14 @@
             .classList.toggle("open");
     }
 
+
     function closeSidebarMobile() {
 
         document
             .getElementById("sidebar")
             .classList.remove("open");
     }
+
 
     async function newChat() {
 
@@ -819,7 +810,12 @@
                 }
             );
 
-            const data = await response.json();
+            if (!response.ok) {
+                throw new Error("Could not create conversation");
+            }
+
+            const data =
+                await response.json();
 
             currentConversationId = data.id;
 
@@ -829,6 +825,10 @@
 
             closeSidebarMobile();
 
+            document
+                .getElementById("message")
+                .focus();
+
         } catch (error) {
 
             console.error(error);
@@ -836,7 +836,12 @@
         }
     }
 
+
     async function sendMessage() {
+
+        if (sending) {
+            return;
+        }
 
         const input =
             document.getElementById("message");
@@ -847,6 +852,13 @@
         if (!text) {
             return;
         }
+
+        sending = true;
+
+        const sendButton =
+            document.getElementById("sendButton");
+
+        sendButton.disabled = true;
 
         const welcome =
             document.getElementById("welcome");
@@ -873,8 +885,9 @@
                     },
                     body: JSON.stringify({
                         message: text,
-                        mode: convertMode(currentMode),
-                        conversationId: currentConversationId
+                        mode: currentMode,
+                        conversationId:
+                            currentConversationId
                     })
                 }
             );
@@ -884,10 +897,17 @@
             }
 
             const result =
-                await response.text();
+                await response.json();
+
+            if (result.conversationId) {
+
+                currentConversationId =
+                    result.conversationId;
+            }
 
             addMessage(
-                result,
+                result.response
+                    || "No response was generated.",
                 "assistant"
             );
 
@@ -895,28 +915,23 @@
 
         } catch (error) {
 
+            console.error(error);
+
             addMessage(
                 "Connection error.",
                 "assistant"
             );
 
+        } finally {
+
+            sending = false;
+
+            sendButton.disabled = false;
+
+            input.focus();
         }
     }
 
-    function convertMode(mode) {
-
-        switch (mode) {
-
-            case "noctis":
-                return "deep";
-
-            case "aether":
-                return "powerful";
-
-            default:
-                return "fast";
-        }
-    }
 
     function addMessage(text, type) {
 
@@ -950,6 +965,7 @@
             text;
 
         message.appendChild(role);
+
         message.appendChild(content);
 
         container.appendChild(message);
@@ -958,24 +974,35 @@
             container.scrollHeight;
     }
 
+
     function clearMessages() {
 
-        document.getElementById(
-            "messages"
-        ).innerHTML = `
-            <div class="welcome" id="welcome">
-                <div>
-                    <img
-                        class="welcome-logo"
-                        src="/images/blackwater-logo.png"
-                        alt="Blackwater"
-                    >
-                    <h1>Blackwater</h1>
-                    <p>How can I help you today?</p>
+        document
+            .getElementById("messages")
+            .innerHTML = `
+                <div
+                    class="welcome"
+                    id="welcome"
+                >
+                    <div>
+
+                        <img
+                            class="welcome-logo"
+                            src="/images/blackwater-logo.png"
+                            alt="Blackwater"
+                        >
+
+                        <h1>Blackwater</h1>
+
+                        <p>
+                            How can I help you today?
+                        </p>
+
+                    </div>
                 </div>
-            </div>
-        `;
+            `;
     }
+
 
     async function loadConversations() {
 
@@ -985,6 +1012,12 @@
                 await fetch(
                     "/api/conversations"
                 );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Could not load conversations"
+                );
+            }
 
             const conversations =
                 await response.json();
@@ -997,6 +1030,7 @@
             container.innerHTML = "";
 
             conversations
+                .slice()
                 .reverse()
                 .forEach(id => {
 
@@ -1020,7 +1054,6 @@
                         openConversation(id);
 
                     container.appendChild(item);
-
                 });
 
         } catch (error) {
@@ -1030,14 +1063,22 @@
         }
     }
 
+
     async function openConversation(id) {
 
         try {
 
             const response =
                 await fetch(
-                    "/api/conversations/" + id
+                    "/api/conversations/"
+                    + encodeURIComponent(id)
                 );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Could not load conversation"
+                );
+            }
 
             const messages =
                 await response.json();
@@ -1066,9 +1107,24 @@
                     return;
                 }
 
+                const roleStart =
+                    line.indexOf("] ");
+
+                if (roleStart === -1) {
+
+                    addMessage(
+                        line.substring(
+                            separator + 2
+                        ),
+                        "assistant"
+                    );
+
+                    return;
+                }
+
                 const role =
                     line.substring(
-                        line.indexOf("] ") + 2,
+                        roleStart + 2,
                         separator
                     );
 
@@ -1083,7 +1139,6 @@
                         ? "user"
                         : "assistant"
                 );
-
             });
 
             await loadConversations();
@@ -1096,6 +1151,7 @@
 
         }
     }
+
 
     async function clearMemory() {
 
@@ -1111,6 +1167,8 @@
 
             if (response.ok) {
                 alert("Memory cleared.");
+            } else {
+                alert("Could not clear memory.");
             }
 
         } catch (error) {
@@ -1119,6 +1177,7 @@
 
         }
     }
+
 
     async function clearConversations() {
 
@@ -1133,22 +1192,30 @@
 
         try {
 
-            const response =
+            const conversationsResponse =
                 await fetch(
-                    "/api/conversations",
+                    "/api/conversations"
+                );
+
+            const conversations =
+                await conversationsResponse.json();
+
+            for (const id of conversations) {
+
+                await fetch(
+                    "/api/conversations/"
+                    + encodeURIComponent(id),
                     {
                         method: "DELETE"
                     }
                 );
-
-            if (response.ok) {
-
-                currentConversationId = null;
-
-                clearMessages();
-
-                await loadConversations();
             }
+
+            currentConversationId = null;
+
+            clearMessages();
+
+            await loadConversations();
 
         } catch (error) {
 
@@ -1159,15 +1226,14 @@
         }
     }
 
+
     function openSettings() {
 
         document
-            .getElementById(
-                "settingsOverlay"
-            )
+            .getElementById("settingsOverlay")
             .classList.add("open");
-
     }
+
 
     function closeSettings(event) {
 
@@ -1182,12 +1248,10 @@
         }
 
         document
-            .getElementById(
-                "settingsOverlay"
-            )
+            .getElementById("settingsOverlay")
             .classList.remove("open");
-
     }
+
 
     function handleKey(event) {
 
@@ -1199,10 +1263,9 @@
             event.preventDefault();
 
             sendMessage();
-
         }
-
     }
+
 
     document
         .getElementById("language")
@@ -1211,6 +1274,7 @@
             "blackwater-language"
         ) || "auto";
 
+
     document
         .getElementById("dialect")
         .value =
@@ -1218,12 +1282,12 @@
             "blackwater-dialect"
         ) || "auto";
 
+
     document
         .getElementById("defaultMode")
         .value =
-        localStorage.getItem(
-            "blackwater-mode"
-        ) || "veyra";
+        currentMode;
+
 
     document
         .getElementById("language")
@@ -1235,9 +1299,9 @@
                     "blackwater-language",
                     event.target.value
                 );
-
             }
         );
+
 
     document
         .getElementById("dialect")
@@ -1249,9 +1313,9 @@
                     "blackwater-dialect",
                     event.target.value
                 );
-
             }
         );
+
 
     document
         .getElementById("defaultMode")
@@ -1262,9 +1326,9 @@
                 selectMode(
                     event.target.value
                 );
-
             }
         );
+
 
     selectMode(currentMode);
 
