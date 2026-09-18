@@ -24,9 +24,13 @@ public class GeminiProvider implements AIProvider {
         return generate(message, "swift");
     }
 
-    public String generate(String message, String mode) {
+    public String generate(
+            String message,
+            String mode
+    ) {
 
-        String apiKey = System.getenv("GEMINI_API_KEY");
+        String apiKey =
+                System.getenv("GEMINI_API_KEY");
 
         if (apiKey == null || apiKey.isBlank()) {
             return "GEMINI_API_KEY is not configured.";
@@ -35,10 +39,15 @@ public class GeminiProvider implements AIProvider {
         String model = getModel(mode);
 
         Map<String, Object> body = Map.of(
-                "contents", new Object[]{
+                "contents",
+                new Object[]{
                         Map.of(
-                                "parts", new Object[]{
-                                        Map.of("text", message)
+                                "parts",
+                                new Object[]{
+                                        Map.of(
+                                                "text",
+                                                message
+                                        )
                                 }
                         )
                 }
@@ -52,18 +61,21 @@ public class GeminiProvider implements AIProvider {
 
         try {
 
-            String rawResponse = webClient.post()
-                    .uri(url)
-                    .header(
-                            "Content-Type",
-                            "application/json"
-                    )
-                    .bodyValue(body)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
+            String rawResponse =
+                    webClient.post()
+                            .uri(url)
+                            .header(
+                                    "Content-Type",
+                                    "application/json"
+                            )
+                            .bodyValue(body)
+                            .retrieve()
+                            .bodyToMono(String.class)
+                            .block();
 
-            return responseParser.parseGemini(rawResponse);
+            return responseParser.parseGemini(
+                    rawResponse
+            );
 
         } catch (Exception e) {
 
@@ -74,11 +86,12 @@ public class GeminiProvider implements AIProvider {
 
     private String getModel(String mode) {
 
-        String defaultModel = System.getenv()
-                .getOrDefault(
-                        "GEMINI_MODEL",
-                        "gemini-2.5-flash"
-                );
+        String defaultModel =
+                System.getenv()
+                        .getOrDefault(
+                                "GEMINI_MODEL",
+                                "gemini-2.5-flash"
+                        );
 
         String selectedMode =
                 mode == null
