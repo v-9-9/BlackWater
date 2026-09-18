@@ -1,12 +1,6 @@
 package service;
 
-import org.springframework.stereotype.Service;
+public interface AIProvider {
 
-@Service
-public class AIService {
-
-    public String generate(String message) {
-
-        return "AI connection is ready: " + message;
-    }
+    String generate(String message);
 }
