@@ -16,6 +16,8 @@ public class ConversationService {
     private static final Path CONVERSATIONS_DIR =
             Path.of("blackwater-conversations");
 
+    private static final int MAX_CONTEXT_MESSAGES = 30;
+
     public synchronized String createConversation() {
 
         try {
@@ -107,11 +109,61 @@ public class ConversationService {
         }
     }
 
+    public synchronized List<String> getContext(
+            String conversationId
+    ) {
+
+        List<String> conversation =
+                getConversation(conversationId);
+
+        if (conversation.isEmpty()) {
+            return List.of();
+        }
+
+        int start = Math.max(
+                0,
+                conversation.size() - MAX_CONTEXT_MESSAGES
+        );
+
+        return new ArrayList<>(
+                conversation.subList(
+                        start,
+                        conversation.size()
+                )
+        );
+    }
+
+    public synchronized String buildContext(
+            String conversationId
+    ) {
+
+        List<String> messages =
+                getContext(conversationId);
+
+        if (messages.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder context =
+                new StringBuilder();
+
+        for (String message : messages) {
+
+            context
+                    .append(message)
+                    .append(System.lineSeparator());
+        }
+
+        return context.toString().trim();
+    }
+
     public synchronized List<String> getConversations() {
 
-        List<String> conversations = new ArrayList<>();
+        List<String> conversations =
+                new ArrayList<>();
 
         try {
+
             if (!Files.exists(CONVERSATIONS_DIR)) {
                 return conversations;
             }
@@ -119,12 +171,15 @@ public class ConversationService {
             try (var files = Files.list(CONVERSATIONS_DIR)) {
 
                 files
-                        .filter(path -> path.toString().endsWith(".txt"))
-                        .map(path -> path.getFileName().toString())
-                        .map(name -> name.substring(
-                                0,
-                                name.length() - 4
-                        ))
+                        .filter(path ->
+                                path.toString().endsWith(".txt"))
+                        .map(path ->
+                                path.getFileName().toString())
+                        .map(name ->
+                                name.substring(
+                                        0,
+                                        name.length() - 4
+                                ))
                         .sorted()
                         .forEach(conversations::add);
             }
@@ -132,6 +187,7 @@ public class ConversationService {
             return conversations;
 
         } catch (IOException e) {
+
             throw new RuntimeException(
                     "Could not load conversations.",
                     e
@@ -148,11 +204,13 @@ public class ConversationService {
         }
 
         try {
+
             Files.deleteIfExists(
                     getConversationFile(conversationId)
             );
 
         } catch (IOException e) {
+
             throw new RuntimeException(
                     "Could not delete conversation.",
                     e
@@ -160,9 +218,14 @@ public class ConversationService {
         }
     }
 
-    private Path getConversationFile(String conversationId) {
+    private Path getConversationFile(
+            String conversationId
+    ) {
 
-        if (!conversationId.matches("[a-zA-Z0-9_-]+")) {
+        if (!conversationId.matches(
+                "[a-zA-Z0-9_-]+"
+        )) {
+
             throw new IllegalArgumentException(
                     "Invalid conversation ID."
             );
