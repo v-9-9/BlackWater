@@ -16,6 +16,10 @@ public class OpenAIProvider implements AIProvider {
 
     @Override
     public String generate(String message) {
+        return generate(message, "fast");
+    }
+
+    public String generate(String message, String mode) {
 
         String apiKey = System.getenv("OPENAI_API_KEY");
 
@@ -23,8 +27,7 @@ public class OpenAIProvider implements AIProvider {
             return "OPENAI_API_KEY is not configured.";
         }
 
-        String model = System.getenv()
-                .getOrDefault("OPENAI_MODEL", "gpt-4o-mini");
+        String model = getModel(mode);
 
         Map<String, Object> body = Map.of(
                 "model", model,
@@ -44,5 +47,21 @@ public class OpenAIProvider implements AIProvider {
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
+    }
+
+    private String getModel(String mode) {
+
+        String defaultModel = System.getenv()
+                .getOrDefault("OPENAI_MODEL", "gpt-4o-mini");
+
+        return switch (mode == null ? "fast" : mode.toLowerCase()) {
+            case "deep" -> System.getenv()
+                    .getOrDefault("OPENAI_DEEP_MODEL", defaultModel);
+
+            case "powerful" -> System.getenv()
+                    .getOrDefault("OPENAI_POWERFUL_MODEL", defaultModel);
+
+            default -> defaultModel;
+        };
     }
 }
