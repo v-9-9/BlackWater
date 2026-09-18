@@ -24,15 +24,25 @@ public class ChatController {
     }
 
     @PostMapping("/chat")
-    public String chat(
+    public Map<String, String> chat(
             @RequestBody Map<String, String> request
     ) {
+
         String message = request.get("message");
         String mode = request.getOrDefault("mode", "fast");
         String conversationId = request.get("conversationId");
 
+        if (message == null || message.isBlank()) {
+            return Map.of(
+                    "response", "Message is empty.",
+                    "conversationId",
+                    conversationId == null ? "" : conversationId
+            );
+        }
+
         if (conversationId == null || conversationId.isBlank()) {
-            conversationId = conversationService.createConversation();
+            conversationId =
+                    conversationService.createConversation();
         }
 
         conversationService.saveMessage(
@@ -46,27 +56,39 @@ public class ChatController {
                 mode
         );
 
+        if (response == null || response.isBlank()) {
+            response = "No response was generated.";
+        }
+
         conversationService.saveMessage(
                 conversationId,
                 "assistant",
                 response
         );
 
-        return response;
+        return Map.of(
+                "conversationId",
+                conversationId,
+                "response",
+                response
+        );
     }
 
     @PostMapping("/conversations")
     public Map<String, String> createConversation() {
 
-        String id = conversationService.createConversation();
+        String id =
+                conversationService.createConversation();
 
         return Map.of(
-                "id", id
+                "id",
+                id
         );
     }
 
     @GetMapping("/conversations")
     public List<String> getConversations() {
+
         return conversationService.getConversations();
     }
 
@@ -74,6 +96,7 @@ public class ChatController {
     public List<String> getConversation(
             @PathVariable String id
     ) {
+
         return conversationService.getConversation(id);
     }
 
@@ -81,10 +104,12 @@ public class ChatController {
     public Map<String, String> deleteConversation(
             @PathVariable String id
     ) {
+
         conversationService.deleteConversation(id);
 
         return Map.of(
-                "status", "deleted"
+                "status",
+                "deleted"
         );
     }
 }
