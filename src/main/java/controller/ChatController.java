@@ -29,18 +29,28 @@ public class ChatController {
     ) {
 
         String message = request.get("message");
-        String mode = request.getOrDefault("mode", "fast");
-        String conversationId = request.get("conversationId");
+        String mode = request.getOrDefault(
+                "mode",
+                "swift"
+        );
+        String conversationId = request.get(
+                "conversationId"
+        );
 
         if (message == null || message.isBlank()) {
             return Map.of(
-                    "response", "Message is empty.",
+                    "response",
+                    "Message is empty.",
                     "conversationId",
-                    conversationId == null ? "" : conversationId
+                    conversationId == null
+                            ? ""
+                            : conversationId
             );
         }
 
-        if (conversationId == null || conversationId.isBlank()) {
+        if (conversationId == null
+                || conversationId.isBlank()) {
+
             conversationId =
                     conversationService.createConversation();
         }
@@ -53,7 +63,8 @@ public class ChatController {
 
         String response = aiService.generate(
                 message,
-                mode
+                mode,
+                conversationId
         );
 
         if (response == null || response.isBlank()) {
