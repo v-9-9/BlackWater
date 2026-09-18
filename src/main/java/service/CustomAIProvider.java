@@ -16,18 +16,19 @@ public class CustomAIProvider implements AIProvider {
 
     @Override
     public String generate(String message) {
+        return generate(message, "fast");
+    }
+
+    public String generate(String message, String mode) {
 
         String apiKey = System.getenv("CUSTOM_AI_API_KEY");
         String baseUrl = System.getenv("CUSTOM_AI_BASE_URL");
-        String model = System.getenv("CUSTOM_AI_MODEL");
 
         if (baseUrl == null || baseUrl.isBlank()) {
             return "CUSTOM_AI_BASE_URL is not configured.";
         }
 
-        if (model == null || model.isBlank()) {
-            model = "default";
-        }
+        String model = getModel(mode);
 
         Map<String, Object> body = Map.of(
                 "model", model,
@@ -52,5 +53,21 @@ public class CustomAIProvider implements AIProvider {
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
+    }
+
+    private String getModel(String mode) {
+
+        String defaultModel = System.getenv()
+                .getOrDefault("CUSTOM_AI_MODEL", "default");
+
+        return switch (mode == null ? "fast" : mode.toLowerCase()) {
+            case "deep" -> System.getenv()
+                    .getOrDefault("CUSTOM_AI_DEEP_MODEL", defaultModel);
+
+            case "powerful" -> System.getenv()
+                    .getOrDefault("CUSTOM_AI_POWERFUL_MODEL", defaultModel);
+
+            default -> defaultModel;
+        };
     }
 }
