@@ -3,6 +3,8 @@ package controller;
 import org.springframework.web.bind.annotation.*;
 import service.AIService;
 
+import java.util.Map;
+
 @RestController
 @RequestMapping("/api")
 @CrossOrigin(origins = "*")
@@ -15,7 +17,12 @@ public class ChatController {
     }
 
     @PostMapping("/chat")
-    public String chat(@RequestBody String message) {
-        return aiService.generate(message);
+    public String chat(
+            @RequestBody Map<String, String> request
+    ) {
+        String message = request.get("message");
+        String mode = request.getOrDefault("mode", "fast");
+
+        return aiService.generate(message, mode);
     }
 }
