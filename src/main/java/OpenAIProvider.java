@@ -16,7 +16,7 @@ public class OpenAIProvider implements AIProvider {
 
     @Override
     public String generate(String message) {
-        return generate(message, "fast");
+        return generate(message, "swift");
     }
 
     public String generate(String message, String mode) {
@@ -41,8 +41,14 @@ public class OpenAIProvider implements AIProvider {
 
         return webClient.post()
                 .uri("https://api.openai.com/v1/chat/completions")
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Content-Type", "application/json")
+                .header(
+                        "Authorization",
+                        "Bearer " + apiKey
+                )
+                .header(
+                        "Content-Type",
+                        "application/json"
+                )
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(String.class)
@@ -52,16 +58,44 @@ public class OpenAIProvider implements AIProvider {
     private String getModel(String mode) {
 
         String defaultModel = System.getenv()
-                .getOrDefault("OPENAI_MODEL", "gpt-4o-mini");
+                .getOrDefault(
+                        "OPENAI_MODEL",
+                        "gpt-4o-mini"
+                );
 
-        return switch (mode == null ? "fast" : mode.toLowerCase()) {
-            case "deep" -> System.getenv()
-                    .getOrDefault("OPENAI_DEEP_MODEL", defaultModel);
+        String selectedMode =
+                mode == null
+                        ? "swift"
+                        : mode.toLowerCase().trim();
 
-            case "powerful" -> System.getenv()
-                    .getOrDefault("OPENAI_POWERFUL_MODEL", defaultModel);
+        return switch (selectedMode) {
 
-            default -> defaultModel;
+            case "deep" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "OPENAI_DEEP_MODEL",
+                                    defaultModel
+                            );
+
+            case "prime" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "OPENAI_PRIME_MODEL",
+                                    defaultModel
+                            );
+
+            case "swift", "fast" ->
+                    defaultModel;
+
+            case "powerful" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "OPENAI_PRIME_MODEL",
+                                    defaultModel
+                            );
+
+            default ->
+                    defaultModel;
         };
     }
 }
