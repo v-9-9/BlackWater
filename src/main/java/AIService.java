@@ -38,13 +38,15 @@ public class AIService {
                     .toLowerCase();
 
             if (className.startsWith(providerName)) {
+
+                if (provider instanceof OpenAIProvider openAIProvider) {
+                    return openAIProvider.generate(message, selectedMode);
+                }
+
                 return provider.generate(message);
             }
         }
 
-        return "AI provider not configured: "
-                + providerName
-                + " | mode: "
-                + selectedMode;
+        return "AI provider not configured: " + providerName;
     }
 }
