@@ -24,9 +24,13 @@ public class AnthropicProvider implements AIProvider {
         return generate(message, "swift");
     }
 
-    public String generate(String message, String mode) {
+    public String generate(
+            String message,
+            String mode
+    ) {
 
-        String apiKey = System.getenv("ANTHROPIC_API_KEY");
+        String apiKey =
+                System.getenv("ANTHROPIC_API_KEY");
 
         if (apiKey == null || apiKey.isBlank()) {
             return "ANTHROPIC_API_KEY is not configured.";
@@ -35,38 +39,48 @@ public class AnthropicProvider implements AIProvider {
         String model = getModel(mode);
 
         Map<String, Object> body = Map.of(
-                "model", model,
-                "max_tokens", 4096,
-                "messages", new Object[]{
+                "model",
+                model,
+                "max_tokens",
+                4096,
+                "messages",
+                new Object[]{
                         Map.of(
-                                "role", "user",
-                                "content", message
+                                "role",
+                                "user",
+                                "content",
+                                message
                         )
                 }
         );
 
         try {
 
-            String rawResponse = webClient.post()
-                    .uri("https://api.anthropic.com/v1/messages")
-                    .header(
-                            "x-api-key",
-                            apiKey
-                    )
-                    .header(
-                            "anthropic-version",
-                            "2023-06-01"
-                    )
-                    .header(
-                            "Content-Type",
-                            "application/json"
-                    )
-                    .bodyValue(body)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
+            String rawResponse =
+                    webClient.post()
+                            .uri(
+                                    "https://api.anthropic.com/v1/messages"
+                            )
+                            .header(
+                                    "x-api-key",
+                                    apiKey
+                            )
+                            .header(
+                                    "anthropic-version",
+                                    "2023-06-01"
+                            )
+                            .header(
+                                    "Content-Type",
+                                    "application/json"
+                            )
+                            .bodyValue(body)
+                            .retrieve()
+                            .bodyToMono(String.class)
+                            .block();
 
-            return responseParser.parseAnthropic(rawResponse);
+            return responseParser.parseAnthropic(
+                    rawResponse
+            );
 
         } catch (Exception e) {
 
@@ -77,11 +91,12 @@ public class AnthropicProvider implements AIProvider {
 
     private String getModel(String mode) {
 
-        String defaultModel = System.getenv()
-                .getOrDefault(
-                        "ANTHROPIC_MODEL",
-                        "claude-sonnet-5"
-                );
+        String defaultModel =
+                System.getenv()
+                        .getOrDefault(
+                                "ANTHROPIC_MODEL",
+                                "claude-sonnet-5"
+                        );
 
         String selectedMode =
                 mode == null
