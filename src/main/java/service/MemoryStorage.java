@@ -28,14 +28,16 @@ public class MemoryStorage {
                     StandardOpenOption.APPEND
             );
         } catch (IOException e) {
-            throw new RuntimeException("Could not save memory.", e);
+            throw new RuntimeException(
+                    "Could not save memory.",
+                    e
+            );
         }
     }
 
     public synchronized List<String> load() {
 
         try {
-
             if (!Files.exists(MEMORY_FILE)) {
                 return List.of();
             }
@@ -43,7 +45,24 @@ public class MemoryStorage {
             return Files.readAllLines(MEMORY_FILE);
 
         } catch (IOException e) {
-            throw new RuntimeException("Could not load memory.", e);
+            throw new RuntimeException(
+                    "Could not load memory.",
+                    e
+            );
+        }
+    }
+
+    public synchronized void clear() {
+
+        try {
+            if (Files.exists(MEMORY_FILE)) {
+                Files.delete(MEMORY_FILE);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(
+                    "Could not clear memory.",
+                    e
+            );
         }
     }
 }
