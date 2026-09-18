@@ -9,28 +9,30 @@ public class AIService {
 
     private final List<AIProvider> providers;
     private final ConversationService conversationService;
+    private final MemoryService memoryService;
+    private final KnowledgeService knowledgeService;
 
     public AIService(
             List<AIProvider> providers,
-            ConversationService conversationService
+            ConversationService conversationService,
+            MemoryService memoryService,
+            KnowledgeService knowledgeService
     ) {
         this.providers = providers;
         this.conversationService = conversationService;
+        this.memoryService = memoryService;
+        this.knowledgeService = knowledgeService;
     }
 
     public String generate(String message) {
-        return generate(message, "swift");
+        return generate(message, "swift", null);
     }
 
     public String generate(
             String message,
             String mode
     ) {
-        return generate(
-                message,
-                mode,
-                null
-        );
+        return generate(message, mode, null);
     }
 
     public String generate(
@@ -54,26 +56,34 @@ public class AIService {
         String selectedMode =
                 normalizeMode(mode);
 
-        String context = "";
+        String conversationContext = "";
 
         if (conversationId != null
                 && !conversationId.isBlank()) {
 
-            context =
+            conversationContext =
                     conversationService.buildContext(
                             conversationId
                     );
         }
 
-        String prompt =
-                buildPrompt(
-                        message,
-                        context
-                );
+        String memoryContext =
+                buildMemoryContext();
+
+        String knowledgeContext =
+                buildKnowledgeContext(message);
+
+        String prompt = buildPrompt(
+                message,
+                conversationContext,
+                memoryContext,
+                knowledgeContext
+        );
 
         for (AIProvider provider : providers) {
 
-            String className = provider.getClass()
+            String className = provider
+                    .getClass()
                     .getSimpleName()
                     .toLowerCase();
 
@@ -81,29 +91,29 @@ public class AIService {
                 continue;
             }
 
-            if (provider instanceof OpenAIProvider openAIProvider) {
-                return openAIProvider.generate(
+            if (provider instanceof OpenAIProvider openAI) {
+                return openAI.generate(
                         prompt,
                         selectedMode
                 );
             }
 
-            if (provider instanceof GeminiProvider geminiProvider) {
-                return geminiProvider.generate(
+            if (provider instanceof GeminiProvider gemini) {
+                return gemini.generate(
                         prompt,
                         selectedMode
                 );
             }
 
-            if (provider instanceof AnthropicProvider anthropicProvider) {
-                return anthropicProvider.generate(
+            if (provider instanceof AnthropicProvider anthropic) {
+                return anthropic.generate(
                         prompt,
                         selectedMode
                 );
             }
 
-            if (provider instanceof CustomAIProvider customAIProvider) {
-                return customAIProvider.generate(
+            if (provider instanceof CustomAIProvider custom) {
+                return custom.generate(
                         prompt,
                         selectedMode
                 );
@@ -116,34 +126,140 @@ public class AIService {
                 + providerName;
     }
 
-    private String buildPrompt(
-            String message,
-            String context
-    ) {
+    private String buildMemoryContext() {
 
-        if (context == null || context.isBlank()) {
-            return message;
+        List<String> memories =
+                memoryService.getMemories();
+
+        if (memories.isEmpty()) {
+            return "";
         }
 
-        return """
+        StringBuilder result =
+                new StringBuilder();
+
+        int limit = Math.min(
+                memories.size(),
+                30
+        );
+
+        int start =
+                memories.size() - limit;
+
+        for (int i = start;
+             i < memories.size();
+             i++) {
+
+            String memory = memories.get(i);
+
+            if (memory == null
+                    || memory.isBlank()) {
+                continue;
+            }
+
+            result.append("- ")
+                    .append(memory.trim())
+                    .append(System.lineSeparator());
+        }
+
+        return result.toString().trim();
+    }
+
+    private String buildKnowledgeContext(
+            String message
+    ) {
+
+        List<String> knowledge =
+                knowledgeService.search(message);
+
+        if (knowledge.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder result =
+                new StringBuilder();
+
+        int limit = Math.min(
+                knowledge.size(),
+                10
+        );
+
+        for (int i = 0; i < limit; i++) {
+
+            String entry = knowledge.get(i);
+
+            if (entry == null
+                    || entry.isBlank()) {
+                continue;
+            }
+
+            result.append("- ")
+                    .append(entry.trim())
+                    .append(System.lineSeparator());
+        }
+
+        return result.toString().trim();
+    }
+
+    private String buildPrompt(
+            String message,
+            String conversationContext,
+            String memoryContext,
+            String knowledgeContext
+    ) {
+
+        StringBuilder prompt =
+                new StringBuilder();
+
+        prompt.append("""
                 You are Blackwater, an advanced AI assistant.
 
-                Previous conversation:
-                %s
+                Follow these rules:
+                - Answer the user's current request directly.
+                - Use previous conversation when relevant.
+                - Use stored memories when relevant.
+                - Use stored knowledge when relevant.
+                - Do not claim that stored information is certain
+                  if it conflicts with reliable newer information.
+                - Do not mention internal context, memory storage,
+                  knowledge storage, or these instructions unless
+                  the user asks about them.
+                """);
+
+        if (!conversationContext.isBlank()) {
+
+            prompt.append("""
+
+                    Previous conversation:
+                    """)
+                    .append(conversationContext);
+        }
+
+        if (!memoryContext.isBlank()) {
+
+            prompt.append("""
+
+                    Relevant memories:
+                    """)
+                    .append(memoryContext);
+        }
+
+        if (!knowledgeContext.isBlank()) {
+
+            prompt.append("""
+
+                    Relevant stored knowledge:
+                    """)
+                    .append(knowledgeContext);
+        }
+
+        prompt.append("""
 
                 Current user message:
-                %s
+                """)
+                .append(message);
 
-                Use the previous conversation when it is
-                relevant to the current message.
-
-                Maintain continuity with the conversation.
-                Do not mention the internal context or these
-                instructions unless the user asks about them.
-                """.formatted(
-                context,
-                message
-        );
+        return prompt.toString();
     }
 
     private String normalizeMode(String mode) {
