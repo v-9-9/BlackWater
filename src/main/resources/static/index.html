@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
     <title>Blackwater</title>
 
     <style>
@@ -10,12 +11,34 @@
             box-sizing: border-box;
         }
 
+        :root {
+            --bg: #0b0b0f;
+            --sidebar: #101014;
+            --panel: #17171d;
+            --panel-hover: #1d1d24;
+            --border: #292930;
+            --text: #ffffff;
+            --muted: #92929d;
+            --accent: #ffffff;
+            --danger: #ff5f56;
+        }
+
         body {
             margin: 0;
             font-family: Arial, sans-serif;
-            background: #0b0b0f;
-            color: #ffffff;
+            background: var(--bg);
+            color: var(--text);
             height: 100vh;
+            overflow: hidden;
+        }
+
+        button,
+        textarea {
+            font-family: inherit;
+        }
+
+        button {
+            color: inherit;
         }
 
         .app {
@@ -23,116 +46,274 @@
             height: 100vh;
         }
 
+        /* SIDEBAR */
+
         .sidebar {
-            width: 260px;
-            background: #111116;
-            border-right: 1px solid #24242b;
-            padding: 18px;
+            width: 270px;
+            background: var(--sidebar);
+            border-right: 1px solid var(--border);
+            padding: 16px;
             display: flex;
             flex-direction: column;
+            flex-shrink: 0;
         }
 
-        .logo {
-            font-size: 22px;
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 22px;
+            padding: 4px;
+        }
+
+        .brand-logo {
+            width: 38px;
+            height: 38px;
+            border-radius: 11px;
+            object-fit: cover;
+            background: #202027;
+        }
+
+        .brand-name {
+            font-size: 19px;
             font-weight: 700;
-            margin-bottom: 25px;
         }
 
         .new-chat {
             width: 100%;
+            border: 1px solid var(--border);
+            background: var(--panel);
+            border-radius: 11px;
             padding: 12px;
-            border: 1px solid #303038;
-            border-radius: 10px;
-            background: #18181f;
-            color: white;
             cursor: pointer;
+            text-align: left;
+            transition: 0.2s;
         }
 
         .new-chat:hover {
-            background: #22222a;
+            background: var(--panel-hover);
         }
+
+        .section-title {
+            margin: 25px 7px 9px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .conversations {
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .conversation {
+            padding: 10px 11px;
+            border-radius: 9px;
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            margin-bottom: 3px;
+            font-size: 14px;
+        }
+
+        .conversation:hover {
+            background: var(--panel-hover);
+        }
+
+        .conversation.active {
+            background: var(--panel);
+        }
+
+        .sidebar-bottom {
+            border-top: 1px solid var(--border);
+            padding-top: 12px;
+            margin-top: 12px;
+        }
+
+        .settings-button {
+            width: 100%;
+            background: transparent;
+            border: 0;
+            padding: 11px;
+            text-align: left;
+            border-radius: 9px;
+            cursor: pointer;
+        }
+
+        .settings-button:hover {
+            background: var(--panel-hover);
+        }
+
+        /* MAIN */
 
         .main {
             flex: 1;
             display: flex;
             flex-direction: column;
+            min-width: 0;
         }
 
         .topbar {
-            height: 60px;
-            border-bottom: 1px solid #24242b;
+            height: 62px;
+            border-bottom: 1px solid var(--border);
             display: flex;
             align-items: center;
-            padding: 0 24px;
+            padding: 0 22px;
+            gap: 12px;
+        }
+
+        .mobile-menu {
+            display: none;
+            background: transparent;
+            border: 0;
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        .topbar-brand {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+        }
+
+        .topbar-logo {
+            width: 30px;
+            height: 30px;
+            border-radius: 9px;
+            object-fit: cover;
+            background: #202027;
+        }
+
+        .topbar-name {
             font-weight: 600;
         }
+
+        /* MESSAGES */
 
         .messages {
             flex: 1;
             overflow-y: auto;
-            padding: 30px;
+            padding: 35px 24px;
         }
 
         .welcome {
             height: 100%;
             display: flex;
-            justify-content: center;
             align-items: center;
+            justify-content: center;
             text-align: center;
         }
 
+        .welcome-logo {
+            width: 75px;
+            height: 75px;
+            border-radius: 22px;
+            object-fit: cover;
+            background: #202027;
+            margin-bottom: 18px;
+        }
+
         .welcome h1 {
-            font-size: 42px;
-            margin-bottom: 10px;
+            font-size: 38px;
+            margin: 0 0 10px;
         }
 
         .welcome p {
-            color: #92929d;
+            color: var(--muted);
+            margin: 0;
         }
 
         .message {
             max-width: 850px;
-            margin: 0 auto 24px;
-            line-height: 1.6;
+            margin: 0 auto 25px;
         }
 
-        .user {
-            color: #ffffff;
+        .message-role {
+            font-size: 13px;
+            color: var(--muted);
+            margin-bottom: 7px;
         }
 
-        .assistant {
-            color: #c9c9d1;
+        .message-content {
+            line-height: 1.65;
+            white-space: pre-wrap;
+            word-wrap: break-word;
         }
+
+        .user .message-content {
+            color: white;
+        }
+
+        .assistant .message-content {
+            color: #d4d4da;
+        }
+
+        /* INPUT */
 
         .input-area {
-            padding: 18px 24px 24px;
+            padding: 12px 24px 24px;
+        }
+
+        .input-container {
+            max-width: 850px;
+            margin: auto;
+        }
+
+        .mode-selector {
+            display: flex;
+            gap: 7px;
+            margin-bottom: 8px;
+        }
+
+        .mode-button {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            border-radius: 9px;
+            padding: 7px 12px;
+            cursor: pointer;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .mode-button:hover {
+            background: var(--panel-hover);
+            color: white;
+        }
+
+        .mode-button.active {
+            color: white;
+            border-color: #50505a;
         }
 
         .input-box {
-            max-width: 850px;
-            margin: auto;
             display: flex;
-            gap: 10px;
-            background: #18181f;
-            border: 1px solid #303038;
+            gap: 9px;
+            background: var(--panel);
+            border: 1px solid var(--border);
             border-radius: 16px;
-            padding: 10px;
+            padding: 9px;
         }
 
         textarea {
             flex: 1;
             resize: none;
+            outline: none;
             border: 0;
-            outline: 0;
             background: transparent;
             color: white;
-            font-size: 16px;
+            font-size: 15px;
             padding: 10px;
             min-height: 45px;
+            max-height: 180px;
         }
 
-        button.send {
-            width: 48px;
+        textarea::placeholder {
+            color: #70707a;
+        }
+
+        .send {
+            width: 45px;
+            height: 45px;
             border: 0;
             border-radius: 12px;
             background: white;
@@ -141,21 +322,140 @@
             font-size: 18px;
         }
 
-        button.send:hover {
+        .send:hover {
             background: #dddddd;
         }
 
+        /* SETTINGS */
+
+        .settings-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.65);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+        }
+
+        .settings-overlay.open {
+            display: flex;
+        }
+
+        .settings {
+            width: min(560px, calc(100% - 30px));
+            max-height: 85vh;
+            overflow-y: auto;
+            background: #111116;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 22px;
+        }
+
+        .settings-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .settings-header h2 {
+            margin: 0;
+            font-size: 21px;
+        }
+
+        .close-settings {
+            border: 0;
+            background: transparent;
+            color: var(--muted);
+            font-size: 23px;
+            cursor: pointer;
+        }
+
+        .setting-section {
+            border-top: 1px solid var(--border);
+            padding: 18px 0;
+        }
+
+        .setting-section:first-of-type {
+            border-top: 0;
+        }
+
+        .setting-section h3 {
+            margin: 0 0 5px;
+            font-size: 15px;
+        }
+
+        .setting-description {
+            color: var(--muted);
+            font-size: 12px;
+            margin-bottom: 13px;
+        }
+
+        select {
+            width: 100%;
+            background: var(--panel);
+            color: white;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            padding: 11px;
+            outline: none;
+        }
+
+        .danger {
+            width: 100%;
+            background: transparent;
+            border: 1px solid #432626;
+            color: #ff8c87;
+            padding: 11px;
+            border-radius: 9px;
+            cursor: pointer;
+        }
+
+        .danger:hover {
+            background: #211515;
+        }
+
+        /* MOBILE */
+
         @media (max-width: 700px) {
+
             .sidebar {
-                display: none;
+                position: fixed;
+                left: -280px;
+                top: 0;
+                bottom: 0;
+                z-index: 30;
+                transition: left 0.2s;
+            }
+
+            .sidebar.open {
+                left: 0;
+            }
+
+            .mobile-menu {
+                display: block;
+            }
+
+            .topbar {
+                padding: 0 15px;
             }
 
             .messages {
-                padding: 20px;
+                padding: 25px 16px;
+            }
+
+            .input-area {
+                padding: 10px 12px 15px;
             }
 
             .welcome h1 {
-                font-size: 32px;
+                font-size: 31px;
+            }
+
+            .welcome-logo {
+                width: 62px;
+                height: 62px;
             }
         }
     </style>
@@ -165,122 +465,811 @@
 
 <div class="app">
 
-    <aside class="sidebar">
-        <div class="logo">Blackwater</div>
-        <button class="new-chat" onclick="newChat()">+ New chat</button>
+    <aside class="sidebar" id="sidebar">
+
+        <div class="brand">
+            <img
+                class="brand-logo"
+                src="/images/blackwater-logo.png"
+                alt="Blackwater"
+            >
+            <div class="brand-name">Blackwater</div>
+        </div>
+
+        <button class="new-chat" onclick="newChat()">
+            + New chat
+        </button>
+
+        <div class="section-title">
+            Conversations
+        </div>
+
+        <div class="conversations" id="conversations"></div>
+
+        <div class="sidebar-bottom">
+            <button
+                class="settings-button"
+                onclick="openSettings()"
+            >
+                ⚙ Settings
+            </button>
+        </div>
+
     </aside>
 
     <main class="main">
 
         <div class="topbar">
-            Blackwater AI
+
+            <button
+                class="mobile-menu"
+                onclick="toggleSidebar()"
+            >
+                ☰
+            </button>
+
+            <div class="topbar-brand">
+
+                <img
+                    class="topbar-logo"
+                    src="/images/blackwater-logo.png"
+                    alt="Blackwater"
+                >
+
+                <div class="topbar-name">
+                    Blackwater
+                </div>
+
+            </div>
+
         </div>
 
         <div class="messages" id="messages">
 
             <div class="welcome" id="welcome">
+
                 <div>
+
+                    <img
+                        class="welcome-logo"
+                        src="/images/blackwater-logo.png"
+                        alt="Blackwater"
+                    >
+
                     <h1>Blackwater</h1>
+
                     <p>How can I help you today?</p>
+
                 </div>
+
             </div>
 
         </div>
 
         <div class="input-area">
-            <div class="input-box">
 
-                <textarea
-                    id="message"
-                    placeholder="Message Blackwater..."
-                    rows="1"
-                    onkeydown="handleKey(event)">
-                </textarea>
+            <div class="input-container">
 
-                <button class="send" onclick="sendMessage()">↑</button>
+                <div class="mode-selector">
+
+                    <button
+                        class="mode-button active"
+                        data-mode="veyra"
+                        onclick="selectMode('veyra')"
+                    >
+                        Veyra
+                    </button>
+
+                    <button
+                        class="mode-button"
+                        data-mode="noctis"
+                        onclick="selectMode('noctis')"
+                    >
+                        Noctis
+                    </button>
+
+                    <button
+                        class="mode-button"
+                        data-mode="aether"
+                        onclick="selectMode('aether')"
+                    >
+                        Aether
+                    </button>
+
+                </div>
+
+                <div class="input-box">
+
+                    <textarea
+                        id="message"
+                        placeholder="Message Blackwater..."
+                        rows="1"
+                        onkeydown="handleKey(event)"
+                    ></textarea>
+
+                    <button
+                        class="send"
+                        onclick="sendMessage()"
+                    >
+                        ↑
+                    </button>
+
+                </div>
 
             </div>
+
         </div>
 
     </main>
 
 </div>
 
+<!-- SETTINGS -->
+
+<div
+    class="settings-overlay"
+    id="settingsOverlay"
+    onclick="closeSettings(event)"
+>
+
+    <div
+        class="settings"
+        onclick="event.stopPropagation()"
+    >
+
+        <div class="settings-header">
+
+            <h2>Settings</h2>
+
+            <button
+                class="close-settings"
+                onclick="closeSettings()"
+            >
+                ×
+            </button>
+
+        </div>
+
+        <div class="setting-section">
+
+            <h3>Language</h3>
+
+            <div class="setting-description">
+                Choose the language Blackwater should respond in.
+            </div>
+
+            <select id="language">
+
+                <option value="auto">
+                    Auto
+                </option>
+
+                <option value="ar">
+                    العربية
+                </option>
+
+                <option value="en">
+                    English
+                </option>
+
+                <option value="tr">
+                    Türkçe
+                </option>
+
+                <option value="fr">
+                    Français
+                </option>
+
+                <option value="es">
+                    Español
+                </option>
+
+            </select>
+
+        </div>
+
+        <div class="setting-section">
+
+            <h3>Dialect</h3>
+
+            <div class="setting-description">
+                Select a dialect when using Arabic.
+            </div>
+
+            <select id="dialect">
+
+                <option value="auto">
+                    Auto
+                </option>
+
+                <option value="iraqi">
+                    Iraqi
+                </option>
+
+                <option value="gulf">
+                    Gulf
+                </option>
+
+                <option value="egyptian">
+                    Egyptian
+                </option>
+
+                <option value="levantine">
+                    Levantine
+                </option>
+
+                <option value="msa">
+                    Modern Standard Arabic
+                </option>
+
+            </select>
+
+        </div>
+
+        <div class="setting-section">
+
+            <h3>Default model</h3>
+
+            <div class="setting-description">
+                Choose the model used for new conversations.
+            </div>
+
+            <select id="defaultMode">
+
+                <option value="veyra">
+                    Veyra
+                </option>
+
+                <option value="noctis">
+                    Noctis
+                </option>
+
+                <option value="aether">
+                    Aether
+                </option>
+
+            </select>
+
+        </div>
+
+        <div class="setting-section">
+
+            <h3>Memory</h3>
+
+            <div class="setting-description">
+                Blackwater can keep saved information for future use.
+            </div>
+
+            <button
+                class="danger"
+                onclick="clearMemory()"
+            >
+                Clear memory
+            </button>
+
+        </div>
+
+        <div class="setting-section">
+
+            <h3>Conversations</h3>
+
+            <div class="setting-description">
+                Delete every saved conversation.
+            </div>
+
+            <button
+                class="danger"
+                onclick="clearConversations()"
+            >
+                Delete all conversations
+            </button>
+
+        </div>
+
+    </div>
+
+</div>
+
 <script>
+
+    let currentConversationId = null;
+    let currentMode = localStorage.getItem("blackwater-mode") || "veyra";
+
+    function selectMode(mode) {
+
+        currentMode = mode;
+
+        localStorage.setItem(
+            "blackwater-mode",
+            mode
+        );
+
+        document.querySelectorAll(".mode-button").forEach(button => {
+
+            button.classList.toggle(
+                "active",
+                button.dataset.mode === mode
+            );
+
+        });
+    }
+
+    function toggleSidebar() {
+
+        document
+            .getElementById("sidebar")
+            .classList.toggle("open");
+    }
+
+    function closeSidebarMobile() {
+
+        document
+            .getElementById("sidebar")
+            .classList.remove("open");
+    }
+
+    async function newChat() {
+
+        try {
+
+            const response = await fetch(
+                "/api/conversations",
+                {
+                    method: "POST"
+                }
+            );
+
+            const data = await response.json();
+
+            currentConversationId = data.id;
+
+            clearMessages();
+
+            await loadConversations();
+
+            closeSidebarMobile();
+
+        } catch (error) {
+
+            console.error(error);
+
+        }
+    }
+
     async function sendMessage() {
 
-        const input = document.getElementById("message");
-        const text = input.value.trim();
+        const input =
+            document.getElementById("message");
 
-        if (!text) return;
+        const text =
+            input.value.trim();
 
-        const welcome = document.getElementById("welcome");
+        if (!text) {
+            return;
+        }
+
+        const welcome =
+            document.getElementById("welcome");
 
         if (welcome) {
             welcome.remove();
         }
 
-        addMessage(text, "user");
+        addMessage(
+            text,
+            "user"
+        );
 
         input.value = "";
 
         try {
 
-            const response = await fetch("/api/chat", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "text/plain"
-                },
-                body: text
-            });
+            const response = await fetch(
+                "/api/chat",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        message: text,
+                        mode: convertMode(currentMode),
+                        conversationId: currentConversationId
+                    })
+                }
+            );
 
-            const result = await response.text();
+            if (!response.ok) {
+                throw new Error("Request failed");
+            }
 
-            addMessage(result, "assistant");
+            const result =
+                await response.text();
+
+            addMessage(
+                result,
+                "assistant"
+            );
+
+            await loadConversations();
 
         } catch (error) {
 
-            addMessage("Connection error.", "assistant");
+            addMessage(
+                "Connection error.",
+                "assistant"
+            );
 
+        }
+    }
+
+    function convertMode(mode) {
+
+        switch (mode) {
+
+            case "noctis":
+                return "deep";
+
+            case "aether":
+                return "powerful";
+
+            default:
+                return "fast";
         }
     }
 
     function addMessage(text, type) {
 
-        const container = document.getElementById("messages");
+        const container =
+            document.getElementById("messages");
 
-        const message = document.createElement("div");
+        const message =
+            document.createElement("div");
 
-        message.className = "message " + type;
+        message.className =
+            "message " + type;
 
-        message.textContent = text;
+        const role =
+            document.createElement("div");
+
+        role.className =
+            "message-role";
+
+        role.textContent =
+            type === "user"
+                ? "You"
+                : "Blackwater";
+
+        const content =
+            document.createElement("div");
+
+        content.className =
+            "message-content";
+
+        content.textContent =
+            text;
+
+        message.appendChild(role);
+        message.appendChild(content);
 
         container.appendChild(message);
 
-        container.scrollTop = container.scrollHeight;
+        container.scrollTop =
+            container.scrollHeight;
     }
 
-    function handleKey(event) {
+    function clearMessages() {
 
-        if (event.key === "Enter" && !event.shiftKey) {
-
-            event.preventDefault();
-
-            sendMessage();
-        }
-    }
-
-    function newChat() {
-
-        document.getElementById("messages").innerHTML = `
+        document.getElementById(
+            "messages"
+        ).innerHTML = `
             <div class="welcome" id="welcome">
                 <div>
+                    <img
+                        class="welcome-logo"
+                        src="/images/blackwater-logo.png"
+                        alt="Blackwater"
+                    >
                     <h1>Blackwater</h1>
                     <p>How can I help you today?</p>
                 </div>
             </div>
         `;
     }
+
+    async function loadConversations() {
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/conversations"
+                );
+
+            const conversations =
+                await response.json();
+
+            const container =
+                document.getElementById(
+                    "conversations"
+                );
+
+            container.innerHTML = "";
+
+            conversations
+                .reverse()
+                .forEach(id => {
+
+                    const item =
+                        document.createElement("div");
+
+                    item.className =
+                        "conversation";
+
+                    item.textContent =
+                        "Conversation " + id;
+
+                    if (
+                        id ===
+                        currentConversationId
+                    ) {
+                        item.classList.add("active");
+                    }
+
+                    item.onclick = () =>
+                        openConversation(id);
+
+                    container.appendChild(item);
+
+                });
+
+        } catch (error) {
+
+            console.error(error);
+
+        }
+    }
+
+    async function openConversation(id) {
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/conversations/" + id
+                );
+
+            const messages =
+                await response.json();
+
+            currentConversationId = id;
+
+            const container =
+                document.getElementById(
+                    "messages"
+                );
+
+            container.innerHTML = "";
+
+            messages.forEach(line => {
+
+                const separator =
+                    line.indexOf(": ");
+
+                if (separator === -1) {
+
+                    addMessage(
+                        line,
+                        "assistant"
+                    );
+
+                    return;
+                }
+
+                const role =
+                    line.substring(
+                        line.indexOf("] ") + 2,
+                        separator
+                    );
+
+                const text =
+                    line.substring(
+                        separator + 2
+                    );
+
+                addMessage(
+                    text,
+                    role === "user"
+                        ? "user"
+                        : "assistant"
+                );
+
+            });
+
+            await loadConversations();
+
+            closeSidebarMobile();
+
+        } catch (error) {
+
+            console.error(error);
+
+        }
+    }
+
+    async function clearMemory() {
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/memory",
+                    {
+                        method: "DELETE"
+                    }
+                );
+
+            if (response.ok) {
+                alert("Memory cleared.");
+            }
+
+        } catch (error) {
+
+            alert("Could not clear memory.");
+
+        }
+    }
+
+    async function clearConversations() {
+
+        const confirmed =
+            confirm(
+                "Delete all saved conversations?"
+            );
+
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/conversations",
+                    {
+                        method: "DELETE"
+                    }
+                );
+
+            if (response.ok) {
+
+                currentConversationId = null;
+
+                clearMessages();
+
+                await loadConversations();
+            }
+
+        } catch (error) {
+
+            alert(
+                "Could not delete conversations."
+            );
+
+        }
+    }
+
+    function openSettings() {
+
+        document
+            .getElementById(
+                "settingsOverlay"
+            )
+            .classList.add("open");
+
+    }
+
+    function closeSettings(event) {
+
+        if (
+            event &&
+            event.target !==
+            document.getElementById(
+                "settingsOverlay"
+            )
+        ) {
+            return;
+        }
+
+        document
+            .getElementById(
+                "settingsOverlay"
+            )
+            .classList.remove("open");
+
+    }
+
+    function handleKey(event) {
+
+        if (
+            event.key === "Enter" &&
+            !event.shiftKey
+        ) {
+
+            event.preventDefault();
+
+            sendMessage();
+
+        }
+
+    }
+
+    document
+        .getElementById("language")
+        .value =
+        localStorage.getItem(
+            "blackwater-language"
+        ) || "auto";
+
+    document
+        .getElementById("dialect")
+        .value =
+        localStorage.getItem(
+            "blackwater-dialect"
+        ) || "auto";
+
+    document
+        .getElementById("defaultMode")
+        .value =
+        localStorage.getItem(
+            "blackwater-mode"
+        ) || "veyra";
+
+    document
+        .getElementById("language")
+        .addEventListener(
+            "change",
+            event => {
+
+                localStorage.setItem(
+                    "blackwater-language",
+                    event.target.value
+                );
+
+            }
+        );
+
+    document
+        .getElementById("dialect")
+        .addEventListener(
+            "change",
+            event => {
+
+                localStorage.setItem(
+                    "blackwater-dialect",
+                    event.target.value
+                );
+
+            }
+        );
+
+    document
+        .getElementById("defaultMode")
+        .addEventListener(
+            "change",
+            event => {
+
+                selectMode(
+                    event.target.value
+                );
+
+            }
+        );
+
+    selectMode(currentMode);
+
+    loadConversations();
+
 </script>
 
 </body>
