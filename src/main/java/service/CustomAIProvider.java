@@ -9,9 +9,14 @@ import java.util.Map;
 public class CustomAIProvider implements AIProvider {
 
     private final WebClient webClient;
+    private final AIResponseParser responseParser;
 
-    public CustomAIProvider(WebClient.Builder builder) {
+    public CustomAIProvider(
+            WebClient.Builder builder,
+            AIResponseParser responseParser
+    ) {
         this.webClient = builder.build();
+        this.responseParser = responseParser;
     }
 
     @Override
@@ -40,25 +45,35 @@ public class CustomAIProvider implements AIProvider {
                 }
         );
 
-        var request = webClient.post()
-                .uri(baseUrl)
-                .header(
-                        "Content-Type",
-                        "application/json"
+        try {
+
+            var request = webClient.post()
+                    .uri(baseUrl)
+                    .header(
+                            "Content-Type",
+                            "application/json"
+                    );
+
+            if (apiKey != null && !apiKey.isBlank()) {
+                request.header(
+                        "Authorization",
+                        "Bearer " + apiKey
                 );
+            }
 
-        if (apiKey != null && !apiKey.isBlank()) {
-            request.header(
-                    "Authorization",
-                    "Bearer " + apiKey
-            );
+            String rawResponse = request
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            return responseParser.parseCustom(rawResponse);
+
+        } catch (Exception e) {
+
+            return "Custom AI request failed: "
+                    + e.getMessage();
         }
-
-        return request
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
     }
 
     private String getModel(String mode) {
