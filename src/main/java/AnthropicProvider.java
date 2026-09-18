@@ -16,7 +16,7 @@ public class AnthropicProvider implements AIProvider {
 
     @Override
     public String generate(String message) {
-        return generate(message, "fast");
+        return generate(message, "swift");
     }
 
     public String generate(String message, String mode) {
@@ -43,8 +43,14 @@ public class AnthropicProvider implements AIProvider {
         return webClient.post()
                 .uri("https://api.anthropic.com/v1/messages")
                 .header("x-api-key", apiKey)
-                .header("anthropic-version", "2023-06-01")
-                .header("Content-Type", "application/json")
+                .header(
+                        "anthropic-version",
+                        "2023-06-01"
+                )
+                .header(
+                        "Content-Type",
+                        "application/json"
+                )
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(String.class)
@@ -54,16 +60,44 @@ public class AnthropicProvider implements AIProvider {
     private String getModel(String mode) {
 
         String defaultModel = System.getenv()
-                .getOrDefault("ANTHROPIC_MODEL", "claude-sonnet-4-5");
+                .getOrDefault(
+                        "ANTHROPIC_MODEL",
+                        "claude-sonnet-5"
+                );
 
-        return switch (mode == null ? "fast" : mode.toLowerCase()) {
-            case "deep" -> System.getenv()
-                    .getOrDefault("ANTHROPIC_DEEP_MODEL", defaultModel);
+        String selectedMode =
+                mode == null
+                        ? "swift"
+                        : mode.toLowerCase().trim();
 
-            case "powerful" -> System.getenv()
-                    .getOrDefault("ANTHROPIC_POWERFUL_MODEL", defaultModel);
+        return switch (selectedMode) {
 
-            default -> defaultModel;
+            case "deep" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "ANTHROPIC_DEEP_MODEL",
+                                    "claude-opus-5"
+                            );
+
+            case "prime" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "ANTHROPIC_PRIME_MODEL",
+                                    "claude-fable-5"
+                            );
+
+            case "swift", "fast" ->
+                    defaultModel;
+
+            case "powerful" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "ANTHROPIC_PRIME_MODEL",
+                                    "claude-fable-5"
+                            );
+
+            default ->
+                    defaultModel;
         };
     }
 }
