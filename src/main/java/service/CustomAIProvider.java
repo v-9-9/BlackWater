@@ -16,7 +16,7 @@ public class CustomAIProvider implements AIProvider {
 
     @Override
     public String generate(String message) {
-        return generate(message, "fast");
+        return generate(message, "swift");
     }
 
     public String generate(String message, String mode) {
@@ -42,10 +42,16 @@ public class CustomAIProvider implements AIProvider {
 
         var request = webClient.post()
                 .uri(baseUrl)
-                .header("Content-Type", "application/json");
+                .header(
+                        "Content-Type",
+                        "application/json"
+                );
 
         if (apiKey != null && !apiKey.isBlank()) {
-            request.header("Authorization", "Bearer " + apiKey);
+            request.header(
+                    "Authorization",
+                    "Bearer " + apiKey
+            );
         }
 
         return request
@@ -58,16 +64,44 @@ public class CustomAIProvider implements AIProvider {
     private String getModel(String mode) {
 
         String defaultModel = System.getenv()
-                .getOrDefault("CUSTOM_AI_MODEL", "default");
+                .getOrDefault(
+                        "CUSTOM_AI_MODEL",
+                        "default"
+                );
 
-        return switch (mode == null ? "fast" : mode.toLowerCase()) {
-            case "deep" -> System.getenv()
-                    .getOrDefault("CUSTOM_AI_DEEP_MODEL", defaultModel);
+        String selectedMode =
+                mode == null
+                        ? "swift"
+                        : mode.toLowerCase().trim();
 
-            case "powerful" -> System.getenv()
-                    .getOrDefault("CUSTOM_AI_POWERFUL_MODEL", defaultModel);
+        return switch (selectedMode) {
 
-            default -> defaultModel;
+            case "deep" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "CUSTOM_AI_DEEP_MODEL",
+                                    defaultModel
+                            );
+
+            case "prime" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "CUSTOM_AI_PRIME_MODEL",
+                                    defaultModel
+                            );
+
+            case "swift", "fast" ->
+                    defaultModel;
+
+            case "powerful" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "CUSTOM_AI_PRIME_MODEL",
+                                    defaultModel
+                            );
+
+            default ->
+                    defaultModel;
         };
     }
 }
