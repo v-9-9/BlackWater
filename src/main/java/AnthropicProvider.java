@@ -1,3 +1,5 @@
+package service;
+
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -21,10 +23,8 @@ public class AnthropicProvider implements AIProvider {
             return "ANTHROPIC_API_KEY is not configured.";
         }
 
-        String model = System.getenv().getOrDefault(
-                "ANTHROPIC_MODEL",
-                "claude-sonnet-4-5"
-        );
+        String model = System.getenv()
+                .getOrDefault("ANTHROPIC_MODEL", "claude-sonnet-4-5");
 
         Map<String, Object> body = Map.of(
                 "model", model,
@@ -41,7 +41,7 @@ public class AnthropicProvider implements AIProvider {
                 .uri("https://api.anthropic.com/v1/messages")
                 .header("x-api-key", apiKey)
                 .header("anthropic-version", "2023-06-01")
-                .header("content-type", "application/json")
+                .header("Content-Type", "application/json")
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(String.class)
