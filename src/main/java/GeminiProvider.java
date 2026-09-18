@@ -9,9 +9,14 @@ import java.util.Map;
 public class GeminiProvider implements AIProvider {
 
     private final WebClient webClient;
+    private final AIResponseParser responseParser;
 
-    public GeminiProvider(WebClient.Builder builder) {
+    public GeminiProvider(
+            WebClient.Builder builder,
+            AIResponseParser responseParser
+    ) {
         this.webClient = builder.build();
+        this.responseParser = responseParser;
     }
 
     @Override
@@ -45,13 +50,26 @@ public class GeminiProvider implements AIProvider {
                         + ":generateContent?key="
                         + apiKey;
 
-        return webClient.post()
-                .uri(url)
-                .header("Content-Type", "application/json")
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
+        try {
+
+            String rawResponse = webClient.post()
+                    .uri(url)
+                    .header(
+                            "Content-Type",
+                            "application/json"
+                    )
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            return responseParser.parseGemini(rawResponse);
+
+        } catch (Exception e) {
+
+            return "Gemini request failed: "
+                    + e.getMessage();
+        }
     }
 
     private String getModel(String mode) {
