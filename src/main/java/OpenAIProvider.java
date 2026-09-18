@@ -9,9 +9,14 @@ import java.util.Map;
 public class OpenAIProvider implements AIProvider {
 
     private final WebClient webClient;
+    private final AIResponseParser responseParser;
 
-    public OpenAIProvider(WebClient.Builder builder) {
+    public OpenAIProvider(
+            WebClient.Builder builder,
+            AIResponseParser responseParser
+    ) {
         this.webClient = builder.build();
+        this.responseParser = responseParser;
     }
 
     @Override
@@ -39,20 +44,30 @@ public class OpenAIProvider implements AIProvider {
                 }
         );
 
-        return webClient.post()
-                .uri("https://api.openai.com/v1/chat/completions")
-                .header(
-                        "Authorization",
-                        "Bearer " + apiKey
-                )
-                .header(
-                        "Content-Type",
-                        "application/json"
-                )
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
+        try {
+
+            String rawResponse = webClient.post()
+                    .uri("https://api.openai.com/v1/chat/completions")
+                    .header(
+                            "Authorization",
+                            "Bearer " + apiKey
+                    )
+                    .header(
+                            "Content-Type",
+                            "application/json"
+                    )
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            return responseParser.parseOpenAI(rawResponse);
+
+        } catch (Exception e) {
+
+            return "OpenAI request failed: "
+                    + e.getMessage();
+        }
     }
 
     private String getModel(String mode) {
