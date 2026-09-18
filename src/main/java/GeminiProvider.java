@@ -16,6 +16,10 @@ public class GeminiProvider implements AIProvider {
 
     @Override
     public String generate(String message) {
+        return generate(message, "fast");
+    }
+
+    public String generate(String message, String mode) {
 
         String apiKey = System.getenv("GEMINI_API_KEY");
 
@@ -23,8 +27,7 @@ public class GeminiProvider implements AIProvider {
             return "GEMINI_API_KEY is not configured.";
         }
 
-        String model = System.getenv()
-                .getOrDefault("GEMINI_MODEL", "gemini-2.5-flash");
+        String model = getModel(mode);
 
         Map<String, Object> body = Map.of(
                 "contents", new Object[]{
@@ -49,5 +52,21 @@ public class GeminiProvider implements AIProvider {
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
+    }
+
+    private String getModel(String mode) {
+
+        String defaultModel = System.getenv()
+                .getOrDefault("GEMINI_MODEL", "gemini-2.5-flash");
+
+        return switch (mode == null ? "fast" : mode.toLowerCase()) {
+            case "deep" -> System.getenv()
+                    .getOrDefault("GEMINI_DEEP_MODEL", defaultModel);
+
+            case "powerful" -> System.getenv()
+                    .getOrDefault("GEMINI_POWERFUL_MODEL", defaultModel);
+
+            default -> defaultModel;
+        };
     }
 }
