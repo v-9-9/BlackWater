@@ -8,51 +8,28 @@ import java.util.List;
 public class AIService {
 
     private final List<AIProvider> providers;
-    private final MemoryService memoryService;
 
-    public AIService(
-            List<AIProvider> providers,
-            MemoryService memoryService
-    ) {
+    public AIService(List<AIProvider> providers) {
         this.providers = providers;
-        this.memoryService = memoryService;
     }
 
     public String generate(String message) {
-
-        List<String> memories = memoryService.getMemories();
-
-        StringBuilder context = new StringBuilder();
-
-        if (!memories.isEmpty()) {
-            context.append("Known information:\n");
-
-            for (String memory : memories) {
-                context.append("- ")
-                        .append(memory)
-                        .append("\n");
-            }
-
-            context.append("\n");
-        }
-
-        context.append("User message:\n")
-                .append(message);
-
-        String response = generateFromProvider(context.toString());
-
-        memoryService.remember(
-                "User: " + message + "\nAI: " + response
-        );
-
-        return response;
+        return generate(message, "fast");
     }
 
-    private String generateFromProvider(String message) {
+    public String generate(String message, String mode) {
+
+        if (message == null || message.isBlank()) {
+            return "Message is empty.";
+        }
 
         String providerName = System.getenv()
                 .getOrDefault("AI_PROVIDER", "openai")
                 .toLowerCase();
+
+        String selectedMode = mode == null || mode.isBlank()
+                ? "fast"
+                : mode.toLowerCase();
 
         for (AIProvider provider : providers) {
 
@@ -61,6 +38,23 @@ public class AIService {
                     .toLowerCase();
 
             if (className.startsWith(providerName)) {
+
+                if (provider instanceof OpenAIProvider openAIProvider) {
+                    return openAIProvider.generate(message, selectedMode);
+                }
+
+                if (provider instanceof GeminiProvider geminiProvider) {
+                    return geminiProvider.generate(message, selectedMode);
+                }
+
+                if (provider instanceof AnthropicProvider anthropicProvider) {
+                    return anthropicProvider.generate(message, selectedMode);
+                }
+
+                if (provider instanceof CustomAIProvider customAIProvider) {
+                    return customAIProvider.generate(message, selectedMode);
+                }
+
                 return provider.generate(message);
             }
         }
