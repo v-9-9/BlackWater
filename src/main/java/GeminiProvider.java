@@ -1,3 +1,5 @@
+package service;
+
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -21,10 +23,8 @@ public class GeminiProvider implements AIProvider {
             return "GEMINI_API_KEY is not configured.";
         }
 
-        String model = System.getenv().getOrDefault(
-                "GEMINI_MODEL",
-                "gemini-2.5-flash"
-        );
+        String model = System.getenv()
+                .getOrDefault("GEMINI_MODEL", "gemini-2.5-flash");
 
         Map<String, Object> body = Map.of(
                 "contents", new Object[]{
@@ -44,6 +44,7 @@ public class GeminiProvider implements AIProvider {
 
         return webClient.post()
                 .uri(url)
+                .header("Content-Type", "application/json")
                 .bodyValue(body)
                 .retrieve()
                 .bodyToMono(String.class)
