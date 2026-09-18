@@ -14,10 +14,22 @@ public class AIService {
     }
 
     public String generate(String message) {
+        return generate(message, "fast");
+    }
+
+    public String generate(String message, String mode) {
+
+        if (message == null || message.isBlank()) {
+            return "Message is empty.";
+        }
 
         String providerName = System.getenv()
                 .getOrDefault("AI_PROVIDER", "openai")
                 .toLowerCase();
+
+        String selectedMode = mode == null || mode.isBlank()
+                ? "fast"
+                : mode.toLowerCase();
 
         for (AIProvider provider : providers) {
 
@@ -30,6 +42,9 @@ public class AIService {
             }
         }
 
-        return "AI provider not configured: " + providerName;
+        return "AI provider not configured: "
+                + providerName
+                + " | mode: "
+                + selectedMode;
     }
 }
