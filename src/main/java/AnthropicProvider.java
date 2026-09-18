@@ -16,6 +16,10 @@ public class AnthropicProvider implements AIProvider {
 
     @Override
     public String generate(String message) {
+        return generate(message, "fast");
+    }
+
+    public String generate(String message, String mode) {
 
         String apiKey = System.getenv("ANTHROPIC_API_KEY");
 
@@ -23,8 +27,7 @@ public class AnthropicProvider implements AIProvider {
             return "ANTHROPIC_API_KEY is not configured.";
         }
 
-        String model = System.getenv()
-                .getOrDefault("ANTHROPIC_MODEL", "claude-sonnet-4-5");
+        String model = getModel(mode);
 
         Map<String, Object> body = Map.of(
                 "model", model,
@@ -46,5 +49,21 @@ public class AnthropicProvider implements AIProvider {
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
+    }
+
+    private String getModel(String mode) {
+
+        String defaultModel = System.getenv()
+                .getOrDefault("ANTHROPIC_MODEL", "claude-sonnet-4-5");
+
+        return switch (mode == null ? "fast" : mode.toLowerCase()) {
+            case "deep" -> System.getenv()
+                    .getOrDefault("ANTHROPIC_DEEP_MODEL", defaultModel);
+
+            case "powerful" -> System.getenv()
+                    .getOrDefault("ANTHROPIC_POWERFUL_MODEL", defaultModel);
+
+            default -> defaultModel;
+        };
     }
 }
