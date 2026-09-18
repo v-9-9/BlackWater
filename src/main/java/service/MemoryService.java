@@ -27,7 +27,6 @@ public class MemoryService {
     }
 
     public void clear() {
-        // Memory is stored permanently.
-        // Clearing can be implemented later with explicit confirmation.
+        storage.clear();
     }
 }
