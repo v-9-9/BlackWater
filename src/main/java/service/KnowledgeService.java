@@ -97,7 +97,9 @@ public class KnowledgeService {
                 return 0;
             }
 
-            return Files.lines(KNOWLEDGE_FILE).count();
+            try (var lines = Files.lines(KNOWLEDGE_FILE)) {
+                return lines.count();
+            }
 
         } catch (IOException e) {
             throw new RuntimeException(
