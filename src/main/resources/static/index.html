@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blackwater</title>
+
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: #0b0b0f;
+            color: #ffffff;
+            height: 100vh;
+        }
+
+        .app {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 260px;
+            background: #111116;
+            border-right: 1px solid #24242b;
+            padding: 18px;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: 700;
+            margin-bottom: 25px;
+        }
+
+        .new-chat {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #303038;
+            border-radius: 10px;
+            background: #18181f;
+            color: white;
+            cursor: pointer;
+        }
+
+        .new-chat:hover {
+            background: #22222a;
+        }
+
+        .main {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .topbar {
+            height: 60px;
+            border-bottom: 1px solid #24242b;
+            display: flex;
+            align-items: center;
+            padding: 0 24px;
+            font-weight: 600;
+        }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 30px;
+        }
+
+        .welcome {
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .welcome h1 {
+            font-size: 42px;
+            margin-bottom: 10px;
+        }
+
+        .welcome p {
+            color: #92929d;
+        }
+
+        .message {
+            max-width: 850px;
+            margin: 0 auto 24px;
+            line-height: 1.6;
+        }
+
+        .user {
+            color: #ffffff;
+        }
+
+        .assistant {
+            color: #c9c9d1;
+        }
+
+        .input-area {
+            padding: 18px 24px 24px;
+        }
+
+        .input-box {
+            max-width: 850px;
+            margin: auto;
+            display: flex;
+            gap: 10px;
+            background: #18181f;
+            border: 1px solid #303038;
+            border-radius: 16px;
+            padding: 10px;
+        }
+
+        textarea {
+            flex: 1;
+            resize: none;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: white;
+            font-size: 16px;
+            padding: 10px;
+            min-height: 45px;
+        }
+
+        button.send {
+            width: 48px;
+            border: 0;
+            border-radius: 12px;
+            background: white;
+            color: black;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        button.send:hover {
+            background: #dddddd;
+        }
+
+        @media (max-width: 700px) {
+            .sidebar {
+                display: none;
+            }
+
+            .messages {
+                padding: 20px;
+            }
+
+            .welcome h1 {
+                font-size: 32px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="app">
+
+    <aside class="sidebar">
+        <div class="logo">Blackwater</div>
+        <button class="new-chat" onclick="newChat()">+ New chat</button>
+    </aside>
+
+    <main class="main">
+
+        <div class="topbar">
+            Blackwater AI
+        </div>
+
+        <div class="messages" id="messages">
+
+            <div class="welcome" id="welcome">
+                <div>
+                    <h1>Blackwater</h1>
+                    <p>How can I help you today?</p>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="input-area">
+            <div class="input-box">
+
+                <textarea
+                    id="message"
+                    placeholder="Message Blackwater..."
+                    rows="1"
+                    onkeydown="handleKey(event)">
+                </textarea>
+
+                <button class="send" onclick="sendMessage()">↑</button>
+
+            </div>
+        </div>
+
+    </main>
+
+</div>
+
+<script>
+    async function sendMessage() {
+
+        const input = document.getElementById("message");
+        const text = input.value.trim();
+
+        if (!text) return;
+
+        const welcome = document.getElementById("welcome");
+
+        if (welcome) {
+            welcome.remove();
+        }
+
+        addMessage(text, "user");
+
+        input.value = "";
+
+        try {
+
+            const response = await fetch("/api/chat", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "text/plain"
+                },
+                body: text
+            });
+
+            const result = await response.text();
+
+            addMessage(result, "assistant");
+
+        } catch (error) {
+
+            addMessage("Connection error.", "assistant");
+
+        }
+    }
+
+    function addMessage(text, type) {
+
+        const container = document.getElementById("messages");
+
+        const message = document.createElement("div");
+
+        message.className = "message " + type;
+
+        message.textContent = text;
+
+        container.appendChild(message);
+
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function handleKey(event) {
+
+        if (event.key === "Enter" && !event.shiftKey) {
+
+            event.preventDefault();
+
+            sendMessage();
+        }
+    }
+
+    function newChat() {
+
+        document.getElementById("messages").innerHTML = `
+            <div class="welcome" id="welcome">
+                <div>
+                    <h1>Blackwater</h1>
+                    <p>How can I help you today?</p>
+                </div>
+            </div>
+        `;
+    }
+</script>
+
+</body>
+</html>
