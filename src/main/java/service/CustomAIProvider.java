@@ -24,10 +24,16 @@ public class CustomAIProvider implements AIProvider {
         return generate(message, "swift");
     }
 
-    public String generate(String message, String mode) {
+    public String generate(
+            String message,
+            String mode
+    ) {
 
-        String apiKey = System.getenv("CUSTOM_AI_API_KEY");
-        String baseUrl = System.getenv("CUSTOM_AI_BASE_URL");
+        String apiKey =
+                System.getenv("CUSTOM_AI_API_KEY");
+
+        String baseUrl =
+                System.getenv("CUSTOM_AI_BASE_URL");
 
         if (baseUrl == null || baseUrl.isBlank()) {
             return "CUSTOM_AI_BASE_URL is not configured.";
@@ -36,38 +42,48 @@ public class CustomAIProvider implements AIProvider {
         String model = getModel(mode);
 
         Map<String, Object> body = Map.of(
-                "model", model,
-                "messages", new Object[]{
+                "model",
+                model,
+                "messages",
+                new Object[]{
                         Map.of(
-                                "role", "user",
-                                "content", message
+                                "role",
+                                "user",
+                                "content",
+                                message
                         )
                 }
         );
 
         try {
 
-            var request = webClient.post()
-                    .uri(baseUrl)
-                    .header(
-                            "Content-Type",
-                            "application/json"
-                    );
+            var request =
+                    webClient.post()
+                            .uri(baseUrl)
+                            .header(
+                                    "Content-Type",
+                                    "application/json"
+                            );
 
-            if (apiKey != null && !apiKey.isBlank()) {
+            if (apiKey != null
+                    && !apiKey.isBlank()) {
+
                 request.header(
                         "Authorization",
                         "Bearer " + apiKey
                 );
             }
 
-            String rawResponse = request
-                    .bodyValue(body)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .block();
+            String rawResponse =
+                    request
+                            .bodyValue(body)
+                            .retrieve()
+                            .bodyToMono(String.class)
+                            .block();
 
-            return responseParser.parseCustom(rawResponse);
+            return responseParser.parseCustom(
+                    rawResponse
+            );
 
         } catch (Exception e) {
 
@@ -78,11 +94,12 @@ public class CustomAIProvider implements AIProvider {
 
     private String getModel(String mode) {
 
-        String defaultModel = System.getenv()
-                .getOrDefault(
-                        "CUSTOM_AI_MODEL",
-                        "default"
-                );
+        String defaultModel =
+                System.getenv()
+                        .getOrDefault(
+                                "CUSTOM_AI_MODEL",
+                                "default"
+                        );
 
         String selectedMode =
                 mode == null
