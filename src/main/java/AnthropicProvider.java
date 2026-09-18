@@ -9,9 +9,14 @@ import java.util.Map;
 public class AnthropicProvider implements AIProvider {
 
     private final WebClient webClient;
+    private final AIResponseParser responseParser;
 
-    public AnthropicProvider(WebClient.Builder builder) {
+    public AnthropicProvider(
+            WebClient.Builder builder,
+            AIResponseParser responseParser
+    ) {
         this.webClient = builder.build();
+        this.responseParser = responseParser;
     }
 
     @Override
@@ -40,21 +45,34 @@ public class AnthropicProvider implements AIProvider {
                 }
         );
 
-        return webClient.post()
-                .uri("https://api.anthropic.com/v1/messages")
-                .header("x-api-key", apiKey)
-                .header(
-                        "anthropic-version",
-                        "2023-06-01"
-                )
-                .header(
-                        "Content-Type",
-                        "application/json"
-                )
-                .bodyValue(body)
-                .retrieve()
-                .bodyToMono(String.class)
-                .block();
+        try {
+
+            String rawResponse = webClient.post()
+                    .uri("https://api.anthropic.com/v1/messages")
+                    .header(
+                            "x-api-key",
+                            apiKey
+                    )
+                    .header(
+                            "anthropic-version",
+                            "2023-06-01"
+                    )
+                    .header(
+                            "Content-Type",
+                            "application/json"
+                    )
+                    .bodyValue(body)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .block();
+
+            return responseParser.parseAnthropic(rawResponse);
+
+        } catch (Exception e) {
+
+            return "Anthropic request failed: "
+                    + e.getMessage();
+        }
     }
 
     private String getModel(String mode) {
@@ -76,14 +94,14 @@ public class AnthropicProvider implements AIProvider {
                     System.getenv()
                             .getOrDefault(
                                     "ANTHROPIC_DEEP_MODEL",
-                                    "claude-opus-5"
+                                    defaultModel
                             );
 
             case "prime" ->
                     System.getenv()
                             .getOrDefault(
                                     "ANTHROPIC_PRIME_MODEL",
-                                    "claude-fable-5"
+                                    defaultModel
                             );
 
             case "swift", "fast" ->
@@ -93,7 +111,7 @@ public class AnthropicProvider implements AIProvider {
                     System.getenv()
                             .getOrDefault(
                                     "ANTHROPIC_PRIME_MODEL",
-                                    "claude-fable-5"
+                                    defaultModel
                             );
 
             default ->
