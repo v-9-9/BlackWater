@@ -16,7 +16,7 @@ public class GeminiProvider implements AIProvider {
 
     @Override
     public String generate(String message) {
-        return generate(message, "fast");
+        return generate(message, "swift");
     }
 
     public String generate(String message, String mode) {
@@ -57,16 +57,44 @@ public class GeminiProvider implements AIProvider {
     private String getModel(String mode) {
 
         String defaultModel = System.getenv()
-                .getOrDefault("GEMINI_MODEL", "gemini-2.5-flash");
+                .getOrDefault(
+                        "GEMINI_MODEL",
+                        "gemini-2.5-flash"
+                );
 
-        return switch (mode == null ? "fast" : mode.toLowerCase()) {
-            case "deep" -> System.getenv()
-                    .getOrDefault("GEMINI_DEEP_MODEL", defaultModel);
+        String selectedMode =
+                mode == null
+                        ? "swift"
+                        : mode.toLowerCase().trim();
 
-            case "powerful" -> System.getenv()
-                    .getOrDefault("GEMINI_POWERFUL_MODEL", defaultModel);
+        return switch (selectedMode) {
 
-            default -> defaultModel;
+            case "deep" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "GEMINI_DEEP_MODEL",
+                                    "gemini-2.5-pro"
+                            );
+
+            case "prime" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "GEMINI_PRIME_MODEL",
+                                    "gemini-2.5-pro"
+                            );
+
+            case "swift", "fast" ->
+                    defaultModel;
+
+            case "powerful" ->
+                    System.getenv()
+                            .getOrDefault(
+                                    "GEMINI_PRIME_MODEL",
+                                    "gemini-2.5-pro"
+                            );
+
+            default ->
+                    defaultModel;
         };
     }
 }
