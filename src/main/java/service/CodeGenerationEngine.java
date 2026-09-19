@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class CodeGenerationEngine {
@@ -22,48 +23,37 @@ public class CodeGenerationEngine {
         this.sandbox = sandbox;
     }
 
-    public synchronized GenerationResult generate(
+    public GenerationResult generate(
             ImprovementGenerator.ImprovementProposal proposal
     ) {
-
         if (proposal == null) {
-            return failed(
-                    "No improvement proposal supplied."
+            return new GenerationResult(
+                    "",
+                    false,
+                    List.of(),
+                    List.of("Proposal is null.")
             );
         }
 
-        if (!proposal.generated()) {
-            return failed(
-                    "Improvement proposal was not generated."
+        String experimentId;
+
+        try {
+            experimentId =
+                    sandbox.createExperiment(
+                            "code-generation-"
+                                    + safe(proposal.featureName())
+            );
+        } catch (Exception exception) {
+            return new GenerationResult(
+                    "",
+                    false,
+                    List.of(),
+                    List.of(
+                            "Could not create sandbox: "
+                                    + safe(exception.getMessage())
+                    )
             );
         }
-
-        String feature =
-                clean(proposal.featureName());
-
-        if (feature.isBlank()) {
-            return failed(
-                    "Feature name is empty."
-            );
-        }
-
-        String experimentName =
-                "codegen-" + sanitize(feature);
-
-        ImprovementSandbox.SandboxResult experiment =
-                sandbox.createExperiment(
-                        experimentName,
-                        buildManifest(proposal)
-                );
-
-        if (!experiment.success()) {
-            return failed(
-                    experiment.message()
-            );
-        }
-
-        String experimentId =
-                experiment.experimentId();
 
         List<String> generatedFiles =
                 new ArrayList<>();
@@ -71,88 +61,115 @@ public class CodeGenerationEngine {
         List<String> errors =
                 new ArrayList<>();
 
-        for (String path :
-                proposal.proposedFiles()) {
+        List<String> requestedFiles =
+                proposal.proposedFiles();
 
-            String safePath =
-                    normalizePath(path);
+        if (requestedFiles == null
+                || requestedFiles.isEmpty()) {
 
-            if (!isAllowedProjectPath(safePath)) {
+            requestedFiles =
+                    proposal.relevantFiles();
+        }
 
+        if (requestedFiles == null
+                || requestedFiles.isEmpty()) {
+
+            return new GenerationResult(
+                    experimentId,
+                    false,
+                    generatedFiles,
+                    List.of(
+                            "No files were selected for generation."
+                    )
+            );
+        }
+
+        for (String relativePath :
+                requestedFiles) {
+
+            String path =
+                    normalizePath(relativePath);
+
+            if (!isAllowedPath(path)) {
                 errors.add(
-                        "Rejected unsafe path: "
-                                + path
+                        "Blocked path: " + path
                 );
-
                 continue;
             }
 
             String currentSource =
-                    readCurrentSource(
-                            safePath
+                    codeAnalysisEngine.readSource(
+                            path
                     );
 
             String prompt =
-                    buildCodePrompt(
+                    buildGenerationPrompt(
                             proposal,
-                            safePath,
+                            path,
                             currentSource
                     );
 
-            String response;
+            String generated;
 
             try {
-
-                response =
+                generated =
                         aiService.generate(
                                 prompt,
-                                "deep",
+                                "prime",
                                 null
                         );
-
-            } catch (Exception e) {
-
+            } catch (Exception exception) {
                 errors.add(
                         "Generation failed for "
-                                + safePath
+                                + path
+                                + ": "
+                                + safe(
+                                exception.getMessage()
+                        )
                 );
-
                 continue;
             }
 
-            String code =
-                    extractCode(response);
-
-            if (code.isBlank()) {
-
-                errors.add(
-                        "No valid code generated for "
-                                + safePath
-                );
-
-                continue;
-            }
-
-            ImprovementSandbox.SandboxResult written =
-                    sandbox.writeFile(
-                            experimentId,
-                            safePath,
-                            code
+            generated =
+                    cleanGeneratedCode(
+                            generated
                     );
 
-            if (!written.success()) {
-
+            if (generated.isBlank()) {
                 errors.add(
-                        "Could not write "
-                                + safePath
+                        "Empty generated code for: "
+                                + path
                 );
-
                 continue;
             }
 
-            generatedFiles.add(
-                    safePath
-            );
+            if (looksUnsafe(generated)) {
+                errors.add(
+                        "Unsafe generated code blocked: "
+                                + path
+                );
+                continue;
+            }
+
+            try {
+                sandbox.writeFile(
+                        experimentId,
+                        path,
+                        generated
+                );
+
+                generatedFiles.add(path);
+
+            } catch (Exception exception) {
+                errors.add(
+                        "Could not write "
+                                + path
+                                + ": "
+                                + safe(
+                                exception.getMessage()
+                        )
+                );
+            }
         }
 
         boolean success =
@@ -161,136 +178,260 @@ public class CodeGenerationEngine {
 
         sandbox.recordResult(
                 experimentId,
-                success,
                 success
-                        ? "Code generation completed."
-                        : "Code generation completed with errors."
+                        ? "GENERATION_SUCCESS"
+                        : "GENERATION_PARTIAL_OR_FAILED"
         );
 
         return new GenerationResult(
                 experimentId,
                 success,
-                generatedFiles,
-                errors
+                List.copyOf(generatedFiles),
+                List.copyOf(errors)
         );
     }
 
-    private String buildCodePrompt(
+    private String buildGenerationPrompt(
             ImprovementGenerator.ImprovementProposal proposal,
             String path,
             String currentSource
     ) {
+        boolean ui =
+                isUiFile(path);
 
-        return """
-                You are Blackwater's code generation engine.
+        StringBuilder prompt =
+                new StringBuilder();
 
-                Generate the complete replacement content for
-                exactly one project file.
+        prompt.append(
+                """
+                You are Blackwater's controlled code-generation engine.
 
-                Feature:
-                %s
+                Generate the COMPLETE replacement content for exactly ONE file.
 
-                Domain:
-                %s
+                You must preserve existing functionality unless the requested
+                improvement explicitly requires changing it.
 
-                Improvement summary:
-                %s
+                Never return Markdown.
+                Never wrap the result in ``` fences.
+                Never return explanations before or after the code.
 
-                Target file:
-                %s
+                The generated file must be directly usable as the complete
+                contents of the requested file.
 
-                Current file content:
-                %s
+                """
+        );
 
-                Rules:
-                - Return ONLY the complete file content.
-                - Do not use Markdown fences.
-                - Do not explain the code.
-                - Preserve existing functionality.
-                - Make the smallest safe change possible.
-                - Do not add unrelated features.
-                - Do not include secrets or API keys.
-                - Do not use Runtime.exec.
-                - Do not use ProcessBuilder.
-                - Do not execute shell commands.
-                - Do not access files outside the project.
-                - The result must be valid for the target file type.
-                """.formatted(
-                proposal.featureName(),
-                proposal.domain(),
-                proposal.summary(),
-                path,
-                currentSource
-        ).trim();
-    }
+        prompt.append(
+                "TARGET DOMAIN: "
+        );
+        prompt.append(
+                safe(proposal.domain())
+        );
+        prompt.append("\n");
 
-    private String readCurrentSource(
-            String path
-    ) {
+        prompt.append(
+                "FEATURE: "
+        );
+        prompt.append(
+                safe(proposal.featureName())
+        );
+        prompt.append("\n");
 
-        try {
-            String source =
-                    codeAnalysisEngine.readSource(
-                            path
-                    );
+        prompt.append(
+                "SUMMARY: "
+        );
+        prompt.append(
+                safe(proposal.summary())
+        );
+        prompt.append("\n");
 
-            if (source == null) {
-                return "(File does not currently exist.)";
-            }
+        prompt.append(
+                "TARGET FILE: "
+        );
+        prompt.append(path);
+        prompt.append("\n\n");
 
-            return source;
-        } catch (Exception ignored) {
-            return "(File could not be read.)";
+        if (ui) {
+            prompt.append(
+                    """
+                    UI CODING RULES:
+                    - Treat this as a real user-facing interface.
+                    - Improve visual hierarchy, spacing, responsiveness,
+                      usability and consistency when appropriate.
+                    - Preserve working controls and API integrations.
+                    - Make mobile layouts work properly.
+                    - Avoid unnecessary libraries.
+                    - Keep the existing Blackwater visual identity unless
+                      the requested feature requires a change.
+                    - HTML, CSS and JavaScript are all valid UI code.
+                    - Do not add voice features.
+                    - Do not remove existing functional settings or controls.
+                    - Avoid fake UI elements that do nothing.
+                    """
+            );
+        } else {
+            prompt.append(
+                    """
+                    BACKEND CODING RULES:
+                    - Preserve existing APIs unless the improvement requires
+                      a compatible extension.
+                    - Keep classes focused and maintainable.
+                    - Validate input where appropriate.
+                    - Avoid destructive operations.
+                    - Do not introduce shell commands or arbitrary process
+                      execution.
+                    """
+            );
         }
+
+        prompt.append(
+                """
+
+                SAFETY RULES:
+                - Never use Runtime.getRuntime().
+                - Never use ProcessBuilder.
+                - Never execute shell commands.
+                - Never delete arbitrary files.
+                - Never access credentials or secrets.
+                - Never modify files outside the project.
+                - Never use ../ path traversal.
+                - Never add malware, persistence mechanisms or surveillance.
+                - Do not modify configuration to expose secrets.
+
+                EXISTING FILE:
+                """
+        );
+
+        prompt.append(
+                "\n"
+        );
+
+        if (currentSource == null
+                || currentSource.isBlank()) {
+            prompt.append(
+                    "[FILE DOES NOT CURRENTLY EXIST]"
+            );
+        } else {
+            prompt.append(
+                    currentSource
+            );
+        }
+
+        prompt.append(
+                """
+
+                \n\nReturn ONLY the complete replacement
+                contents of the target file.
+                """
+        );
+
+        return prompt.toString();
     }
 
-    private String extractCode(
-            String response
+    private String cleanGeneratedCode(
+            String generated
     ) {
-
-        if (response == null
-                || response.isBlank()) {
+        if (generated == null) {
             return "";
         }
 
-        String code =
-                response.trim();
+        String value =
+                generated.trim();
 
-        if (code.startsWith("```")
-                && code.endsWith("```")) {
+        if (value.startsWith("```")
+                && value.endsWith("```")) {
 
             int firstNewLine =
-                    code.indexOf('\n');
+                    value.indexOf('\n');
 
             if (firstNewLine > 0) {
+                value =
+                        value.substring(
+                                firstNewLine + 1
+                        );
+            }
 
-                code =
-                        code.substring(
-                                firstNewLine + 1,
-                                code.length() - 3
+            int lastFence =
+                    value.lastIndexOf("```");
+
+            if (lastFence >= 0) {
+                value =
+                        value.substring(
+                                0,
+                                lastFence
                         );
             }
         }
 
-        return code.trim();
+        return value.trim();
     }
 
-    private boolean isAllowedProjectPath(
+    private boolean isAllowedPath(
             String path
     ) {
+        if (path.isBlank()) {
+            return false;
+        }
 
-        return path.startsWith(
-                    "src/main/"
-                )
-                || path.startsWith(
-                        "src/test/"
-                );
+        if (path.contains("..")
+                || path.startsWith("/")
+                || path.startsWith("\\")
+                || path.contains(":")) {
+            return false;
+        }
+
+        return path.startsWith("src/main/")
+                || path.startsWith("src/test/");
+    }
+
+    private boolean looksUnsafe(
+            String code
+    ) {
+        String lower =
+                safe(code)
+                        .toLowerCase(
+                                Locale.ROOT
+                        );
+
+        String[] forbidden = {
+                "runtime.getruntime",
+                "processbuilder",
+                "powershell",
+                "cmd.exe",
+                "rm -rf",
+                "format c:",
+                "shutdown -",
+                "del /f",
+                "curl | sh",
+                "wget | sh"
+        };
+
+        for (String value : forbidden) {
+            if (lower.contains(value)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean isUiFile(
+            String path
+    ) {
+        String lower =
+                safe(path)
+                        .toLowerCase(
+                                Locale.ROOT
+                        );
+
+        return lower.endsWith(".html")
+                || lower.endsWith(".css")
+                || lower.endsWith(".js");
     }
 
     private String normalizePath(
             String path
     ) {
-
         if (path == null) {
             return "";
         }
@@ -304,78 +445,12 @@ public class CodeGenerationEngine {
                 );
     }
 
-    private String sanitize(
+    private String safe(
             String value
     ) {
-
-        String result =
-                value.replaceAll(
-                        "[^a-zA-Z0-9_-]+",
-                        "-"
-                );
-
-        if (result.isBlank()) {
-            return "feature";
-        }
-
-        return result.substring(
-                0,
-                Math.min(
-                        result.length(),
-                        60
-                )
-        );
-    }
-
-    private String clean(
-            String value
-    ) {
-
         return value == null
                 ? ""
-                : value
-                        .replace(
-                                "\u0000",
-                                ""
-                        )
-                        .trim();
-    }
-
-    private String buildManifest(
-            ImprovementGenerator.ImprovementProposal proposal
-    ) {
-
-        return """
-                Blackwater Code Generation Experiment
-
-                Feature:
-                %s
-
-                Domain:
-                %s
-
-                Summary:
-                %s
-
-                This experiment is isolated.
-                Generated code must be verified before application.
-                """.formatted(
-                proposal.featureName(),
-                proposal.domain(),
-                proposal.summary()
-        ).trim();
-    }
-
-    private GenerationResult failed(
-            String message
-    ) {
-
-        return new GenerationResult(
-                "",
-                false,
-                List.of(),
-                List.of(message)
-        );
+                : value;
     }
 
     public record GenerationResult(
