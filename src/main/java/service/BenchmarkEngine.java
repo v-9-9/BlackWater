@@ -12,23 +12,23 @@ import java.util.Map;
 public class BenchmarkEngine {
 
     private final BenchmarkHistory history;
+    private final BenchmarkTaskBank taskBank;
     private final LearningEngine learningEngine;
     private final AIService aiService;
     private final KnowledgeService knowledgeService;
-    private final ImprovementSandbox sandbox;
 
     public BenchmarkEngine(
             BenchmarkHistory history,
+            BenchmarkTaskBank taskBank,
             LearningEngine learningEngine,
             AIService aiService,
-            KnowledgeService knowledgeService,
-            ImprovementSandbox sandbox
+            KnowledgeService knowledgeService
     ) {
         this.history = history;
+        this.taskBank = taskBank;
         this.learningEngine = learningEngine;
         this.aiService = aiService;
         this.knowledgeService = knowledgeService;
-        this.sandbox = sandbox;
     }
 
     public BenchmarkResult run(String domain) {
@@ -42,7 +42,7 @@ public class BenchmarkEngine {
         String normalized = normalizeDomain(domain);
 
         List<BenchmarkTaskBank.BenchmarkTask> tasks =
-                BenchmarkTaskBank.getTasks(normalized);
+                taskBank.getTasks(normalized);
 
         if (tasks.isEmpty()) {
             return new BenchmarkResult(
@@ -141,7 +141,7 @@ public class BenchmarkEngine {
         switch (domain) {
             case "RESEARCH" -> {
                 try {
-                    LearningEngine.ResearchResult result =
+                    ResearchEngine.ResearchResult result =
                             learningEngine.research(task.prompt());
 
                     if (result == null) {
@@ -207,13 +207,11 @@ public class BenchmarkEngine {
         if (experimentId != null && !experimentId.isBlank()) {
             prompt.append("""
 
-                    
                     SANDBOX EXPERIMENT:
                     """);
             prompt.append(experimentId);
 
             prompt.append("""
-                    
                     
                     The experiment may contain a proposed code improvement.
                     Evaluate the task while considering the implementation represented
@@ -279,10 +277,8 @@ public class BenchmarkEngine {
             return 0.0;
         }
 
-        String query = task.prompt();
-
         List<KnowledgeEntry> results =
-                knowledgeService.search(query);
+                knowledgeService.search(task.prompt());
 
         if (results == null || results.isEmpty()) {
             return 0.0;
@@ -379,7 +375,7 @@ public class BenchmarkEngine {
     }
 
     private String buildResearchEvaluationText(
-            LearningEngine.ResearchResult result
+            ResearchEngine.ResearchResult result
     ) {
         StringBuilder text = new StringBuilder();
 
@@ -411,6 +407,17 @@ public class BenchmarkEngine {
         }
 
         return text.toString();
+    }
+
+    private String normalize(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+                .trim()
+                .toLowerCase(Locale.ROOT)
+                .replaceAll("\\s+", " ");
     }
 
     private String normalizeDomain(String domain) {
