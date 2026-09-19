@@ -2,7 +2,6 @@ package service;
 
 import org.springframework.stereotype.Service;
 
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
@@ -27,159 +26,271 @@ public class CodeGenerationEngine {
         this.sandbox = sandbox;
     }
 
-    public GenerationResult generate(ImprovementGenerator.ImprovementProposal proposal) {
+    public synchronized GenerationResult generate(
+            ImprovementGenerator.ImprovementProposal proposal
+    ) {
+
         if (proposal == null) {
-            return new GenerationResult(
+            return failed(
                     null,
-                    false,
-                    List.of(),
-                    List.of("Improvement proposal is null.")
+                    "Improvement proposal is null."
             );
         }
 
-        String experimentId = sandbox.createExperiment(
-                "code-generation-" + safeName(proposal.featureName()),
-                proposal.rawProposal()
-        );
+        ImprovementSandbox.SandboxResult experiment;
 
-        return generate(proposal, experimentId);
+        try {
+            experiment = sandbox.createExperiment(
+                    "code-generation-"
+                            + safeName(proposal.featureName()),
+                    proposal.rawProposal()
+            );
+        } catch (Exception e) {
+            return failed(
+                    null,
+                    "Could not create sandbox experiment: "
+                            + safeMessage(e)
+            );
+        }
+
+        if (experiment == null
+                || !experiment.success()) {
+
+            return failed(
+                    experiment == null
+                            ? null
+                            : experiment.experimentId(),
+                    experiment == null
+                            ? "Sandbox experiment creation failed."
+                            : experiment.message()
+            );
+        }
+
+        return generate(
+                proposal,
+                experiment.experimentId()
+        );
     }
 
-    public GenerationResult generate(
+    public synchronized GenerationResult generate(
             ImprovementGenerator.ImprovementProposal proposal,
             String experimentId
     ) {
+
         if (proposal == null) {
-            return new GenerationResult(
+            return failed(
                     experimentId,
-                    false,
-                    List.of(),
-                    List.of("Improvement proposal is null.")
+                    "Improvement proposal is null."
             );
         }
 
-        if (experimentId == null || experimentId.isBlank()) {
-            return new GenerationResult(
+        if (experimentId == null
+                || experimentId.isBlank()) {
+
+            return failed(
                     null,
-                    false,
-                    List.of(),
-                    List.of("Experiment ID is missing.")
+                    "Experiment ID is missing."
             );
         }
 
         if (!sandbox.exists(experimentId)) {
-            return new GenerationResult(
+
+            return failed(
                     experimentId,
-                    false,
-                    List.of(),
-                    List.of("Sandbox experiment does not exist.")
+                    "Sandbox experiment does not exist."
             );
         }
 
-        List<String> generatedFiles = new ArrayList<>();
-        List<String> errors = new ArrayList<>();
+        List<String> generatedFiles =
+                new ArrayList<>();
 
-        Set<String> candidateFiles = new LinkedHashSet<>();
+        List<String> errors =
+                new ArrayList<>();
+
+        Set<String> candidateFiles =
+                new LinkedHashSet<>();
 
         if (proposal.proposedFiles() != null) {
-            candidateFiles.addAll(proposal.proposedFiles());
-        }
-
-        if (candidateFiles.isEmpty() && proposal.relevantFiles() != null) {
-            candidateFiles.addAll(proposal.relevantFiles());
-        }
-
-        if (candidateFiles.isEmpty()) {
             candidateFiles.addAll(
-                    codeAnalysisEngine
-                            .findRelevantFiles(
-                                    proposal.featureName(),
-                                    proposal.domain()
-                            )
-                            .files()
+                    proposal.proposedFiles()
+            );
+        }
+
+        if (candidateFiles.isEmpty()
+                && proposal.relevantFiles() != null) {
+
+            candidateFiles.addAll(
+                    proposal.relevantFiles()
             );
         }
 
         if (candidateFiles.isEmpty()) {
-            errors.add("No relevant source files were found.");
-            return new GenerationResult(
+
+            List<CodeAnalysisEngine.SourceFile>
+                    relevantFiles =
+                    codeAnalysisEngine.findRelevantFiles(
+                            proposal.featureName(),
+                            proposal.domain()
+                    );
+
+            if (relevantFiles != null) {
+
+                for (
+                        CodeAnalysisEngine.SourceFile file
+                        : relevantFiles
+                ) {
+
+                    if (file != null
+                            && file.path() != null) {
+
+                        candidateFiles.add(
+                                file.path()
+                        );
+                    }
+                }
+            }
+        }
+
+        if (candidateFiles.isEmpty()) {
+
+            errors.add(
+                    "No relevant source files were found."
+            );
+
+            recordResult(
                     experimentId,
                     false,
                     generatedFiles,
                     errors
             );
+
+            return new GenerationResult(
+                    experimentId,
+                    false,
+                    List.copyOf(generatedFiles),
+                    List.copyOf(errors)
+            );
         }
 
-        for (String file : candidateFiles) {
-            String normalizedPath = normalizeProjectPath(file);
+        for (String file :
+                candidateFiles) {
+
+            String normalizedPath =
+                    normalizeProjectPath(file);
 
             if (normalizedPath == null) {
-                errors.add("Blocked unsafe or unsupported path: " + file);
+
+                errors.add(
+                        "Blocked unsafe or unsupported path: "
+                                + file
+                );
+
                 continue;
             }
 
             try {
-                String currentSource = codeAnalysisEngine.readSource(normalizedPath);
 
-                if (currentSource == null || currentSource.isBlank()) {
-                    errors.add("Source file is empty or unreadable: " + normalizedPath);
+                String currentSource =
+                        codeAnalysisEngine.readSource(
+                                normalizedPath
+                        );
+
+                if (currentSource == null
+                        || currentSource.isBlank()) {
+
+                    errors.add(
+                            "Source file is empty or unreadable: "
+                                    + normalizedPath
+                    );
+
                     continue;
                 }
 
-                String prompt = buildGenerationPrompt(
-                        proposal,
-                        normalizedPath,
-                        currentSource
-                );
+                String prompt =
+                        buildGenerationPrompt(
+                                proposal,
+                                normalizedPath,
+                                currentSource
+                        );
 
-                String generated = aiService.generate(
-                        prompt,
-                        "prime",
-                        null
-                );
+                String generated =
+                        aiService.generate(
+                                prompt,
+                                "prime",
+                                null
+                        );
 
-                String cleaned = cleanGeneratedCode(generated);
+                String cleaned =
+                        cleanGeneratedCode(
+                                generated
+                        );
 
-                if (!isValidGeneratedContent(cleaned)) {
-                    errors.add("Generated content was rejected for: " + normalizedPath);
-                    continue;
-                }
-
-                if (looksDangerous(cleaned)) {
-                    errors.add("Generated content contains blocked operations: " + normalizedPath);
-                    continue;
-                }
-
-                sandbox.writeFile(
-                        experimentId,
-                        normalizedPath,
+                if (!isValidGeneratedContent(
                         cleaned
-                );
+                )) {
 
-                generatedFiles.add(normalizedPath);
+                    errors.add(
+                            "Generated content was rejected for: "
+                                    + normalizedPath
+                    );
+
+                    continue;
+                }
+
+                if (looksDangerous(
+                        cleaned
+                )) {
+
+                    errors.add(
+                            "Generated content contains blocked operations: "
+                                    + normalizedPath
+                    );
+
+                    continue;
+                }
+
+                ImprovementSandbox.SandboxResult writeResult =
+                        sandbox.writeFile(
+                                experimentId,
+                                normalizedPath,
+                                cleaned
+                        );
+
+                if (writeResult == null
+                        || !writeResult.success()) {
+
+                    errors.add(
+                            "Failed to write generated file: "
+                                    + normalizedPath
+                    );
+
+                    continue;
+                }
+
+                generatedFiles.add(
+                        normalizedPath
+                );
 
             } catch (Exception e) {
+
                 errors.add(
-                        "Failed to generate " +
-                        normalizedPath +
-                        ": " +
-                        safeMessage(e)
+                        "Failed to generate "
+                                + normalizedPath
+                                + ": "
+                                + safeMessage(e)
                 );
             }
         }
 
-        boolean success = !generatedFiles.isEmpty() && errors.isEmpty();
+        boolean success =
+                !generatedFiles.isEmpty()
+                        && errors.isEmpty();
 
-        if (!success && !generatedFiles.isEmpty()) {
-            success = true;
-        }
-
-        sandbox.recordResult(
+        recordResult(
                 experimentId,
-                "CODE_GENERATION",
                 success,
-                "Generated files: " + generatedFiles.size()
-                        + ", errors: " + errors.size()
+                generatedFiles,
+                errors
         );
 
         return new GenerationResult(
@@ -190,14 +301,45 @@ public class CodeGenerationEngine {
         );
     }
 
+    private void recordResult(
+            String experimentId,
+            boolean success,
+            List<String> generatedFiles,
+            List<String> errors
+    ) {
+
+        String details =
+                "CODE_GENERATION"
+                        + System.lineSeparator()
+                        + "Generated files: "
+                        + generatedFiles.size()
+                        + System.lineSeparator()
+                        + "Errors: "
+                        + errors.size();
+
+        try {
+
+            sandbox.recordResult(
+                    experimentId,
+                    success,
+                    details
+            );
+
+        } catch (Exception ignored) {
+        }
+    }
+
     private String buildGenerationPrompt(
             ImprovementGenerator.ImprovementProposal proposal,
             String filePath,
             String currentSource
     ) {
-        boolean uiFile = isUiFile(filePath);
 
-        StringBuilder prompt = new StringBuilder();
+        boolean uiFile =
+                isUiFile(filePath);
+
+        StringBuilder prompt =
+                new StringBuilder();
 
         prompt.append("""
                 You are Blackwater's controlled code evolution engine.
@@ -218,6 +360,7 @@ public class CodeGenerationEngine {
                 """);
 
         if (uiFile) {
+
             prompt.append("""
                     
                     UI-SPECIFIC RULES:
@@ -230,7 +373,9 @@ public class CodeGenerationEngine {
                     17. Do not create fake controls that appear functional but are not connected.
                     18. Do not add unnecessary frontend libraries.
                     """);
+
         } else {
+
             prompt.append("""
                     
                     BACKEND RULES:
@@ -241,27 +386,73 @@ public class CodeGenerationEngine {
                     """);
         }
 
-        prompt.append("\n\nTARGET FILE:\n");
-        prompt.append(filePath);
+        prompt.append(
+                "\n\nTARGET FILE:\n"
+        );
 
-        prompt.append("\n\nDOMAIN:\n");
-        prompt.append(nullSafe(proposal.domain()));
+        prompt.append(
+                filePath
+        );
 
-        prompt.append("\n\nFEATURE:\n");
-        prompt.append(nullSafe(proposal.featureName()));
+        prompt.append(
+                "\n\nDOMAIN:\n"
+        );
 
-        prompt.append("\n\nPROPOSAL:\n");
-        prompt.append(nullSafe(proposal.summary()));
+        prompt.append(
+                nullSafe(
+                        proposal.domain()
+                )
+        );
 
-        if (proposal.tests() != null && !proposal.tests().isEmpty()) {
-            prompt.append("\n\nRECOMMENDED TESTS:\n");
-            for (String test : proposal.tests()) {
-                prompt.append("- ").append(test).append("\n");
+        prompt.append(
+                "\n\nFEATURE:\n"
+        );
+
+        prompt.append(
+                nullSafe(
+                        proposal.featureName()
+                )
+        );
+
+        prompt.append(
+                "\n\nPROPOSAL:\n"
+        );
+
+        prompt.append(
+                nullSafe(
+                        proposal.summary()
+                )
+        );
+
+        if (proposal.tests() != null
+                && !proposal.tests().isEmpty()) {
+
+            prompt.append(
+                    "\n\nRECOMMENDED TESTS:\n"
+            );
+
+            for (String test :
+                    proposal.tests()) {
+
+                prompt.append(
+                        "- "
+                )
+                .append(
+                        test
+                )
+                .append(
+                        "\n"
+                );
             }
         }
 
-        prompt.append("\n\nCURRENT FILE CONTENT:\n");
-        prompt.append(currentSource);
+        prompt.append(
+                "\n\nCURRENT FILE CONTENT:\n"
+        );
+
+        prompt.append(
+                currentSource
+        );
 
         prompt.append("""
                 
@@ -271,21 +462,33 @@ public class CodeGenerationEngine {
         return prompt.toString();
     }
 
-    private String normalizeProjectPath(String path) {
-        if (path == null || path.isBlank()) {
+    private String normalizeProjectPath(
+            String path
+    ) {
+
+        if (path == null
+                || path.isBlank()) {
+
             return null;
         }
 
-        String normalized = path
-                .trim()
-                .replace('\\', '/');
+        String normalized =
+                path.trim()
+                        .replace('\\', '/');
 
         while (normalized.startsWith("./")) {
-            normalized = normalized.substring(2);
+
+            normalized =
+                    normalized.substring(2);
         }
 
-        if (!normalized.startsWith("src/main/")
-                && !normalized.startsWith("src/test/")) {
+        if (!normalized.startsWith(
+                "src/main/"
+        )
+                && !normalized.startsWith(
+                "src/test/"
+        )) {
+
             return null;
         }
 
@@ -293,31 +496,49 @@ public class CodeGenerationEngine {
                 || normalized.startsWith("/")
                 || normalized.contains(":")
                 || normalized.contains("\0")) {
+
             return null;
         }
 
-        String lower = normalized.toLowerCase(Locale.ROOT);
+        String lower =
+                normalized.toLowerCase(
+                        Locale.ROOT
+                );
 
         if (lower.contains("/.git/")
                 || lower.contains("/target/")
-                || lower.contains("/blackwater-sandbox/")
-                || lower.contains("/blackwater-backups/")) {
+                || lower.contains(
+                        "/blackwater-sandbox/"
+                )
+                || lower.contains(
+                        "/blackwater-backups/"
+                )) {
+
             return null;
         }
 
-        String fileName = Path.of(normalized)
-                .getFileName()
-                .toString()
-                .toLowerCase(Locale.ROOT);
+        String fileName =
+                Path.of(normalized)
+                        .getFileName()
+                        .toString()
+                        .toLowerCase(
+                                Locale.ROOT
+                        );
 
-        if (!isSupportedExtension(fileName)) {
+        if (!isSupportedExtension(
+                fileName
+        )) {
+
             return null;
         }
 
         return normalized;
     }
 
-    private boolean isSupportedExtension(String fileName) {
+    private boolean isSupportedExtension(
+            String fileName
+    ) {
+
         return fileName.endsWith(".java")
                 || fileName.endsWith(".html")
                 || fileName.endsWith(".css")
@@ -330,8 +551,14 @@ public class CodeGenerationEngine {
                 || fileName.endsWith(".md");
     }
 
-    private boolean isUiFile(String filePath) {
-        String lower = filePath.toLowerCase(Locale.ROOT);
+    private boolean isUiFile(
+            String filePath
+    ) {
+
+        String lower =
+                filePath.toLowerCase(
+                        Locale.ROOT
+                );
 
         return lower.endsWith(".html")
                 || lower.endsWith(".css")
@@ -340,32 +567,53 @@ public class CodeGenerationEngine {
                 || lower.contains("/templates/");
     }
 
-    private String cleanGeneratedCode(String generated) {
+    private String cleanGeneratedCode(
+            String generated
+    ) {
+
         if (generated == null) {
             return "";
         }
 
-        String result = generated.trim();
+        String result =
+                generated.trim();
 
         if (result.startsWith("```")) {
-            int firstNewLine = result.indexOf('\n');
+
+            int firstNewLine =
+                    result.indexOf('\n');
 
             if (firstNewLine >= 0) {
-                result = result.substring(firstNewLine + 1);
+
+                result =
+                        result.substring(
+                                firstNewLine + 1
+                        );
             }
 
-            int closingFence = result.lastIndexOf("```");
+            int closingFence =
+                    result.lastIndexOf("```");
 
             if (closingFence >= 0) {
-                result = result.substring(0, closingFence);
+
+                result =
+                        result.substring(
+                                0,
+                                closingFence
+                        );
             }
         }
 
         return result.trim();
     }
 
-    private boolean isValidGeneratedContent(String content) {
-        if (content == null || content.isBlank()) {
+    private boolean isValidGeneratedContent(
+            String content
+    ) {
+
+        if (content == null
+                || content.isBlank()) {
+
             return false;
         }
 
@@ -373,17 +621,30 @@ public class CodeGenerationEngine {
             return false;
         }
 
-        String lower = content.toLowerCase(Locale.ROOT);
+        String lower =
+                content.toLowerCase(
+                        Locale.ROOT
+                );
 
         return !lower.equals("null")
                 && !lower.equals("undefined")
                 && !lower.contains("i cannot")
-                && !lower.contains("i can't generate")
-                && !lower.contains("unable to generate");
+                && !lower.contains(
+                        "i can't generate"
+                )
+                && !lower.contains(
+                        "unable to generate"
+                );
     }
 
-    private boolean looksDangerous(String content) {
-        String lower = content.toLowerCase(Locale.ROOT);
+    private boolean looksDangerous(
+            String content
+    ) {
+
+        String lower =
+                content.toLowerCase(
+                        Locale.ROOT
+                );
 
         String[] blocked = {
                 "runtime.getruntime",
@@ -405,7 +666,9 @@ public class CodeGenerationEngine {
                 "keylogger"
         };
 
-        for (String pattern : blocked) {
+        for (String pattern :
+                blocked) {
+
             if (lower.contains(pattern)) {
                 return true;
             }
@@ -414,27 +677,47 @@ public class CodeGenerationEngine {
         return false;
     }
 
-    private String safeName(String value) {
-        if (value == null || value.isBlank()) {
+    private String safeName(
+            String value
+    ) {
+
+        if (value == null
+                || value.isBlank()) {
+
             return "unknown";
         }
 
-        return value
-                .replaceAll("[^a-zA-Z0-9_-]", "-")
-                .replaceAll("-+", "-")
-                .substring(
-                        0,
-                        Math.min(
-                                80,
-                                value.replaceAll("[^a-zA-Z0-9_-]", "-")
-                                        .replaceAll("-+", "-")
-                                        .length()
+        String safe =
+                value
+                        .replaceAll(
+                                "[^a-zA-Z0-9_-]",
+                                "-"
                         )
-                );
+                        .replaceAll(
+                                "-+",
+                                "-"
+                        );
+
+        if (safe.isBlank()) {
+            return "unknown";
+        }
+
+        return safe.substring(
+                0,
+                Math.min(
+                        80,
+                        safe.length()
+                )
+        );
     }
 
-    private String safeMessage(Exception e) {
-        if (e == null || e.getMessage() == null) {
+    private String safeMessage(
+            Exception e
+    ) {
+
+        if (e == null
+                || e.getMessage() == null) {
+
             return "unknown error";
         }
 
@@ -443,8 +726,26 @@ public class CodeGenerationEngine {
                 .replace('\r', ' ');
     }
 
-    private String nullSafe(String value) {
-        return value == null ? "" : value;
+    private String nullSafe(
+            String value
+    ) {
+
+        return value == null
+                ? ""
+                : value;
+    }
+
+    private GenerationResult failed(
+            String experimentId,
+            String message
+    ) {
+
+        return new GenerationResult(
+                experimentId,
+                false,
+                List.of(),
+                List.of(message)
+        );
     }
 
     public record GenerationResult(
