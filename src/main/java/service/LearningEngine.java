@@ -2,186 +2,209 @@ package service;
 
 import org.springframework.stereotype.Service;
 
-import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 @Service
 public class LearningEngine {
 
-    private final WebKnowledgeCollector collector;
-    private final KnowledgeEvaluator evaluator;
+    private final WebKnowledgeCollector webKnowledgeCollector;
+    private final ResearchEngine researchEngine;
+    private final KnowledgeEvaluator knowledgeEvaluator;
     private final KnowledgeService knowledgeService;
 
     public LearningEngine(
-            WebKnowledgeCollector collector,
-            KnowledgeEvaluator evaluator,
+            WebKnowledgeCollector webKnowledgeCollector,
+            ResearchEngine researchEngine,
+            KnowledgeEvaluator knowledgeEvaluator,
             KnowledgeService knowledgeService
     ) {
-        this.collector = collector;
-        this.evaluator = evaluator;
-        this.knowledgeService = knowledgeService;
+        this.webKnowledgeCollector =
+                webKnowledgeCollector;
+
+        this.researchEngine =
+                researchEngine;
+
+        this.knowledgeEvaluator =
+                knowledgeEvaluator;
+
+        this.knowledgeService =
+                knowledgeService;
     }
 
-    public synchronized String learn(
+    public synchronized List<KnowledgeEntry> learn(
             String topic
     ) {
 
         if (topic == null
                 || topic.isBlank()) {
 
-            return "Learning topic is empty.";
+            return List.of();
         }
 
-        String cleanTopic =
-                topic.trim();
-
-        /*
-         * Step 1:
-         * Search the web.
-         */
-
-        String information =
-                collector.collect(
-                        cleanTopic
+        ResearchEngine.ResearchResult research =
+                researchEngine.research(
+                        topic
                 );
 
-        if (information == null
-                || information.isBlank()) {
+        List<KnowledgeEntry> learned =
+                new ArrayList<>();
 
-            return
-                    "No information was found for: "
-                            + cleanTopic;
+        for (
+                ResearchEngine.SourceResult source :
+                research.sources()
+        ) {
+
+            if (source == null
+                    || source.content() == null
+                    || source.content().isBlank()) {
+                continue;
+            }
+
+            KnowledgeEntry entry =
+                    createKnowledgeEntry(
+                            topic,
+                            source
+                    );
+
+            if (entry == null) {
+                continue;
+            }
+
+            if (
+                    knowledgeEvaluator.isUseful(
+                            entry
+                    )
+            ) {
+
+                KnowledgeEntry saved =
+                        knowledgeService.learn(
+                                entry
+                        );
+
+                if (saved != null) {
+                    learned.add(
+                            saved
+                    );
+                }
+            }
         }
 
-        /*
-         * Step 2:
-         * Evaluate the collected information.
-         */
-
-        if (!evaluator.isUseful(
-                information
-        )) {
-
-            return
-                    "The collected information "
-                            + "was not useful enough to learn.";
-        }
-
-        /*
-         * Step 3:
-         * Store the new knowledge.
-         */
-
-        knowledgeService.learn(
-                information,
-                "Web Research"
-        );
-
-        /*
-         * Step 4:
-         * Check how much knowledge now exists.
-         */
-
-        long knowledgeCount =
-                knowledgeService.count();
-
-        return
-                "Blackwater learned about: "
-                        + cleanTopic
-                        + System.lineSeparator()
-                        + "Knowledge entries: "
-                        + knowledgeCount
-                        + System.lineSeparator()
-                        + "Learned at: "
-                        + Instant.now();
+        return learned;
     }
 
-    public synchronized String learnMultiple(
+    public synchronized List<KnowledgeEntry> learnMultiple(
             List<String> topics
     ) {
 
         if (topics == null
                 || topics.isEmpty()) {
 
-            return "No learning topics provided.";
+            return List.of();
         }
 
-        int learned = 0;
+        List<KnowledgeEntry> result =
+                new ArrayList<>();
 
-        StringBuilder report =
-                new StringBuilder();
-
-        for (String topic : topics) {
+        for (String topic :
+                topics) {
 
             if (topic == null
                     || topic.isBlank()) {
-
                 continue;
             }
 
-            String result =
-                    learn(topic);
+            try {
 
-            if (!result.startsWith(
-                    "No information"
-            )
-                    && !result.startsWith(
-                            "The collected information"
-                    )
-                    && !result.startsWith(
-                            "Learning topic"
-                    )) {
+                result.addAll(
+                        learn(
+                                topic
+                        )
+                );
 
-                learned++;
+            } catch (Exception ignored) {
             }
-
-            report.append(
-                    result
-            )
-            .append(
-                    System.lineSeparator()
-            )
-            .append(
-                    System.lineSeparator()
-            );
         }
 
-        report.append(
-                "Learning cycle complete."
-        )
-        .append(
-                System.lineSeparator()
-        )
-        .append(
-                "Topics processed: "
-        )
-        .append(
-                topics.size()
-        )
-        .append(
-                System.lineSeparator()
-        )
-        .append(
-                "Successful learning attempts: "
-        )
-        .append(
-                learned
-        );
-
-        return report.toString().trim();
+        return result;
     }
 
-    public synchronized List<String> recentKnowledge(
-            int limit
+    public synchronized ResearchEngine.ResearchResult research(
+            String question
     ) {
 
-        return knowledgeService.getRecent(
-                limit
+        return researchEngine.research(
+                question
         );
     }
 
-    public synchronized long knowledgeCount() {
+    public synchronized List<KnowledgeEntry> recentKnowledge(
+            String query
+    ) {
+
+        return knowledgeService.search(
+                query
+        );
+    }
+
+    public synchronized int knowledgeCount() {
 
         return knowledgeService.count();
+    }
+
+    public synchronized List<KnowledgeEntry> getKnowledge(
+            String query
+    ) {
+
+        return knowledgeService.search(
+                query
+        );
+    }
+
+    private KnowledgeEntry createKnowledgeEntry(
+            String topic,
+            ResearchEngine.SourceResult source
+    ) {
+
+        try {
+
+            String content =
+                    cleanContent(
+                            source.content()
+                    );
+
+            if (content.isBlank()) {
+                return null;
+            }
+
+            return new KnowledgeEntry(
+                    topic.trim(),
+                    source.title(),
+                    content,
+                    source.url(),
+                    source.source(),
+                    source.confidence()
+            );
+
+        } catch (Exception ignored) {
+
+            return null;
+        }
+    }
+
+    private String cleanContent(
+            String content
+    ) {
+
+        if (content == null) {
+            return "";
+        }
+
+        return content
+                .replaceAll(
+                        "\\s+",
+                        " "
+                )
+                .trim();
     }
 }
