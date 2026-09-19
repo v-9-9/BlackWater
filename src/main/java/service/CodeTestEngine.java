@@ -16,7 +16,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -24,11 +23,6 @@ import java.util.regex.Pattern;
 public class CodeTestEngine {
 
     private static final long MAX_SOURCE_SIZE = 1_000_000;
-
-    private static final Pattern JAVA_PACKAGE =
-            Pattern.compile(
-                    "\\bpackage\\s+[a-zA-Z_][\\w]*(?:\\.[a-zA-Z_][\\w]*)*\\s*;"
-            );
 
     private static final Pattern JAVA_TYPE =
             Pattern.compile(
@@ -51,9 +45,13 @@ public class CodeTestEngine {
         this.verifier = verifier;
     }
 
-    public TestResult test(String experimentId) {
+    public synchronized TestResult test(
+            String experimentId
+    ) {
 
-        if (experimentId == null || experimentId.isBlank()) {
+        if (experimentId == null
+                || experimentId.isBlank()) {
+
             return failed(
                     null,
                     "Experiment ID is missing."
@@ -61,39 +59,57 @@ public class CodeTestEngine {
         }
 
         if (!sandbox.exists(experimentId)) {
+
             return failed(
                     experimentId,
                     "Sandbox experiment does not exist."
             );
         }
 
-        List<String> errors = new ArrayList<>();
+        List<String> errors =
+                new ArrayList<>();
+
         int totalTests = 0;
         int passedTests = 0;
 
         ImprovementVerifier.VerificationResult verification;
 
         try {
-            verification = verifier.verify(experimentId);
+
+            verification =
+                    verifier.verify(
+                            experimentId
+                    );
+
         } catch (Exception e) {
+
             return failed(
                     experimentId,
-                    "Verification failed: " + safeMessage(e)
+                    "Verification failed: "
+                            + safeMessage(e)
             );
         }
 
-        if (verification == null || !verification.safe()) {
+        if (verification == null
+                || !verification.passed()) {
+
             return failed(
                     experimentId,
                     "Safety verification failed."
             );
         }
 
-        Map<String, String> files;
+        ImprovementSandbox.SandboxResult inspection;
 
         try {
-            files = sandbox.inspect(experimentId);
+
+            inspection =
+                    sandbox.inspect(
+                            experimentId
+                    );
+
         } catch (Exception e) {
+
             return failed(
                     experimentId,
                     "Could not inspect experiment: "
@@ -101,19 +117,37 @@ public class CodeTestEngine {
             );
         }
 
-        if (files == null || files.isEmpty()) {
+        if (inspection == null
+                || !inspection.success()
+                || inspection.files() == null
+                || inspection.files().isEmpty()) {
+
             return failed(
                     experimentId,
                     "Experiment contains no generated files."
             );
         }
 
-        Set<String> testedFiles = new HashSet<>();
+        Path experimentRoot =
+                Path.of(
+                        "blackwater-sandbox",
+                        "experiments",
+                        experimentId
+                )
+                        .toAbsolutePath()
+                        .normalize();
 
-        for (Map.Entry<String, String> entry : files.entrySet()) {
+        Set<String> testedFiles =
+                new HashSet<>();
 
-            String file = normalizePath(entry.getKey());
-            String content = entry.getValue();
+        for (String inspectedPath :
+                inspection.files()) {
+
+            String file =
+                    toProjectRelativePath(
+                            experimentRoot,
+                            inspectedPath
+                    );
 
             if (!isProjectFile(file)) {
                 continue;
@@ -123,50 +157,99 @@ public class CodeTestEngine {
                 continue;
             }
 
+            String content;
+
+            try {
+
+                content =
+                        sandbox.readFile(
+                                experimentId,
+                                file
+                        );
+
+            } catch (Exception e) {
+
+                errors.add(
+                        "Could not read generated file: "
+                                + file
+                );
+
+                continue;
+            }
+
             totalTests++;
 
-            if (basicContentTest(file, content)) {
+            if (basicContentTest(
+                    file,
+                    content
+            )) {
+
                 passedTests++;
+
             } else {
+
                 errors.add(
-                        "Basic content test failed: " + file
+                        "Basic content test failed: "
+                                + file
                 );
             }
 
             totalTests++;
 
-            if (syntaxStructureTest(file, content)) {
+            if (syntaxStructureTest(
+                    file,
+                    content
+            )) {
+
                 passedTests++;
+
             } else {
+
                 errors.add(
-                        "Syntax/structure test failed: " + file
+                        "Syntax/structure test failed: "
+                                + file
                 );
             }
 
             totalTests++;
 
-            if (qualityStructureTest(file, content)) {
+            if (qualityStructureTest(
+                    file,
+                    content
+            )) {
+
                 passedTests++;
+
             } else {
+
                 errors.add(
-                        "Quality structure test failed: " + file
+                        "Quality structure test failed: "
+                                + file
                 );
             }
 
             totalTests++;
 
-            if (safetyContentTest(content)) {
+            if (safetyContentTest(
+                    content
+            )) {
+
                 passedTests++;
+
             } else {
+
                 errors.add(
-                        "Safety content test failed: " + file
+                        "Safety content test failed: "
+                                + file
                 );
             }
         }
 
         List<String> javaFiles =
                 testedFiles.stream()
-                        .filter(this::isJava)
+                        .filter(
+                                this::isJava
+                        )
                         .toList();
 
         if (!javaFiles.isEmpty()) {
@@ -180,8 +263,11 @@ public class CodeTestEngine {
                     );
 
             if (compileResult.success()) {
+
                 passedTests++;
+
             } else {
+
                 errors.addAll(
                         compileResult.errors()
                 );
@@ -196,27 +282,33 @@ public class CodeTestEngine {
         double score =
                 totalTests == 0
                         ? 0.0
-                        : (double) passedTests / totalTests;
+                        : (double) passedTests
+                        / totalTests;
 
         String summary =
-                "Passed "
+                "CODE_TEST"
+                        + System.lineSeparator()
+                        + "Passed "
                         + passedTests
                         + " / "
                         + totalTests
-                        + " tests. Score: "
+                        + " tests."
+                        + System.lineSeparator()
+                        + "Score: "
                         + String.format(
-                        Locale.ROOT,
-                        "%.3f",
-                        score
-                );
+                                Locale.ROOT,
+                                "%.3f",
+                                score
+                        );
 
         try {
+
             sandbox.recordResult(
                     experimentId,
-                    "CODE_TEST",
                     success,
                     summary
             );
+
         } catch (Exception ignored) {
         }
 
@@ -228,6 +320,48 @@ public class CodeTestEngine {
         );
     }
 
+    private String toProjectRelativePath(
+            Path experimentRoot,
+            String inspectedPath
+    ) {
+
+        if (inspectedPath == null
+                || inspectedPath.isBlank()) {
+
+            return "";
+        }
+
+        try {
+
+            Path path =
+                    Path.of(
+                            inspectedPath
+                    )
+                            .toAbsolutePath()
+                            .normalize();
+
+            if (!path.startsWith(
+                    experimentRoot
+            )) {
+
+                return "";
+            }
+
+            Path relative =
+                    experimentRoot.relativize(
+                            path
+                    );
+
+            return normalizePath(
+                    relative.toString()
+            );
+
+        } catch (Exception e) {
+
+            return "";
+        }
+    }
+
     private JavaCompileResult compileJavaFiles(
             String experimentId,
             List<String> javaFiles
@@ -237,6 +371,7 @@ public class CodeTestEngine {
                 ToolProvider.getSystemJavaCompiler();
 
         if (compiler == null) {
+
             return new JavaCompileResult(
                     false,
                     List.of(
@@ -255,7 +390,10 @@ public class CodeTestEngine {
                         .toAbsolutePath()
                         .normalize();
 
-        if (!Files.isDirectory(experimentRoot)) {
+        if (!Files.isDirectory(
+                experimentRoot
+        )) {
+
             return new JavaCompileResult(
                     false,
                     List.of(
@@ -266,14 +404,31 @@ public class CodeTestEngine {
 
         Path compileOutput =
                 experimentRoot
-                        .resolve(".compile-output")
+                        .resolve(
+                                ".compile-output"
+                        )
                         .normalize();
 
+        if (!compileOutput.startsWith(
+                experimentRoot
+        )) {
+
+            return new JavaCompileResult(
+                    false,
+                    List.of(
+                            "Unsafe compilation output path."
+                    )
+            );
+        }
+
         try {
+
             Files.createDirectories(
                     compileOutput
             );
+
         } catch (IOException e) {
+
             return new JavaCompileResult(
                     false,
                     List.of(
@@ -283,25 +438,46 @@ public class CodeTestEngine {
             );
         }
 
-        List<Path> sourcePaths = new ArrayList<>();
+        List<Path> sourcePaths =
+                new ArrayList<>();
 
-        for (String file : javaFiles) {
+        for (String file :
+                javaFiles) {
+
+            if (!isJava(file)
+                    || !isProjectFile(file)) {
+
+                return new JavaCompileResult(
+                        false,
+                        List.of(
+                                "Unsupported Java source path: "
+                                        + file
+                        )
+                );
+            }
 
             Path source =
                     experimentRoot
                             .resolve(file)
                             .normalize();
 
-            if (!source.startsWith(experimentRoot)) {
+            if (!source.startsWith(
+                    experimentRoot
+            )) {
+
                 return new JavaCompileResult(
                         false,
                         List.of(
-                                "Unsafe Java source path: " + file
+                                "Unsafe Java source path: "
+                                        + file
                         )
                 );
             }
 
-            if (!Files.isRegularFile(source)) {
+            if (!Files.isRegularFile(
+                    source
+            )) {
+
                 return new JavaCompileResult(
                         false,
                         List.of(
@@ -311,17 +487,21 @@ public class CodeTestEngine {
                 );
             }
 
-            sourcePaths.add(source);
+            sourcePaths.add(
+                    source
+            );
         }
 
         if (sourcePaths.isEmpty()) {
+
             return new JavaCompileResult(
                     true,
                     List.of()
             );
         }
 
-        DiagnosticCollector<JavaFileObject> diagnostics =
+        DiagnosticCollector<JavaFileObject>
+                diagnostics =
                 new DiagnosticCollector<>();
 
         try (
@@ -333,22 +513,27 @@ public class CodeTestEngine {
                         )
         ) {
 
-            Iterable<? extends JavaFileObject> units =
-                    fileManager.getJavaFileObjectsFromFiles(
-                            sourcePaths
-                                    .stream()
-                                    .map(Path::toFile)
-                                    .toList()
-                    );
+            Iterable<? extends JavaFileObject>
+                    units =
+                    fileManager
+                            .getJavaFileObjectsFromFiles(
+                                    sourcePaths
+                                            .stream()
+                                            .map(
+                                                    Path::toFile
+                                            )
+                                            .toList()
+                            );
 
-            List<String> options = List.of(
-                    "-proc:none",
-                    "-encoding",
-                    "UTF-8",
-                    "-Xlint:none",
-                    "-d",
-                    compileOutput.toString()
-            );
+            List<String> options =
+                    List.of(
+                            "-proc:none",
+                            "-encoding",
+                            "UTF-8",
+                            "-Xlint:none",
+                            "-d",
+                            compileOutput.toString()
+                    );
 
             JavaCompiler.CompilationTask task =
                     compiler.getTask(
@@ -366,19 +551,25 @@ public class CodeTestEngine {
                     );
 
             if (success) {
+
                 return new JavaCompileResult(
                         true,
                         List.of()
                 );
             }
 
-            List<String> errors = new ArrayList<>();
+            List<String> compileErrors =
+                    new ArrayList<>();
 
-            for (Diagnostic<? extends JavaFileObject> diagnostic :
-                    diagnostics.getDiagnostics()) {
+            for (
+                    Diagnostic<? extends JavaFileObject>
+                            diagnostic
+                    : diagnostics.getDiagnostics()
+            ) {
 
                 if (diagnostic.getKind()
                         != Diagnostic.Kind.ERROR) {
+
                     continue;
                 }
 
@@ -393,27 +584,30 @@ public class CodeTestEngine {
                                 .getFileName()
                                 .toString();
 
-                errors.add(
+                compileErrors.add(
                         "Java compile error in "
                                 + sourceName
                                 + " at line "
                                 + diagnostic.getLineNumber()
                                 + ": "
                                 + diagnostic.getMessage(
-                                Locale.ROOT
-                        )
+                                        Locale.ROOT
+                                )
                 );
             }
 
-            if (errors.isEmpty()) {
-                errors.add(
+            if (compileErrors.isEmpty()) {
+
+                compileErrors.add(
                         "Java compilation failed."
                 );
             }
 
             return new JavaCompileResult(
                     false,
-                    List.copyOf(errors)
+                    List.copyOf(
+                            compileErrors
+                    )
             );
 
         } catch (Exception e) {
@@ -433,20 +627,27 @@ public class CodeTestEngine {
             String content
     ) {
 
-        if (content == null || content.isBlank()) {
+        if (content == null
+                || content.isBlank()) {
+
             return false;
         }
 
-        if (content.length() > MAX_SOURCE_SIZE) {
+        if (content.length()
+                > MAX_SOURCE_SIZE) {
+
             return false;
         }
 
         if (!isSupportedFile(file)) {
+
             return false;
         }
 
         String lower =
-                content.toLowerCase(Locale.ROOT);
+                content.toLowerCase(
+                        Locale.ROOT
+                );
 
         String[] unfinishedMarkers = {
                 "todo: implement",
@@ -459,7 +660,9 @@ public class CodeTestEngine {
                 "coming soon"
         };
 
-        for (String marker : unfinishedMarkers) {
+        for (String marker :
+                unfinishedMarkers) {
+
             if (lower.contains(marker)) {
                 return false;
             }
@@ -473,11 +676,14 @@ public class CodeTestEngine {
             String content
     ) {
 
-        if (content == null || content.isBlank()) {
+        if (content == null
+                || content.isBlank()) {
+
             return false;
         }
 
         if (isJava(file)) {
+
             return balancedIgnoringStrings(
                     content,
                     '{',
@@ -493,10 +699,13 @@ public class CodeTestEngine {
                     '[',
                     ']'
             )
-                    && !containsBrokenJava(content);
+                    && !containsBrokenJava(
+                    content
+            );
         }
 
         if (isJavaScript(file)) {
+
             return balancedIgnoringStrings(
                     content,
                     '{',
@@ -515,6 +724,7 @@ public class CodeTestEngine {
         }
 
         if (isCss(file)) {
+
             return balancedIgnoringStrings(
                     content,
                     '{',
@@ -523,7 +733,10 @@ public class CodeTestEngine {
         }
 
         if (isHtml(file)) {
-            return balancedHtml(content);
+
+            return balancedHtml(
+                    content
+            );
         }
 
         return true;
@@ -534,7 +747,9 @@ public class CodeTestEngine {
             String content
     ) {
 
-        if (content == null || content.isBlank()) {
+        if (content == null
+                || content.isBlank()) {
+
             return false;
         }
 
@@ -561,23 +776,34 @@ public class CodeTestEngine {
             String content
     ) {
 
-        if (!JAVA_TYPE.matcher(content).find()) {
+        if (!JAVA_TYPE.matcher(
+                content
+        ).find()) {
+
             return false;
         }
 
-        if (content.contains("System.out.println")
+        if (content.contains(
+                "System.out.println"
+        )
                 && content.length() > 500) {
+
             return false;
         }
 
-        if (content.contains("catch (Exception e)")
+        if (content.contains(
+                "catch (Exception e)"
+        )
                 && content.contains(
                 "e.printStackTrace()"
         )) {
+
             return false;
         }
 
-        return !containsBrokenJava(content);
+        return !containsBrokenJava(
+                content
+        );
     }
 
     private boolean htmlQualityTest(
@@ -585,29 +811,40 @@ public class CodeTestEngine {
     ) {
 
         String lower =
-                content.toLowerCase(Locale.ROOT);
+                content.toLowerCase(
+                        Locale.ROOT
+                );
 
         boolean hasDocument =
-                lower.contains("<!doctype html")
-                        || lower.contains("<html");
+                lower.contains(
+                        "<!doctype html"
+                )
+                        || lower.contains(
+                        "<html"
+                );
 
         if (!hasDocument) {
             return false;
         }
 
-        if (!lower.contains("<body")) {
+        if (!lower.contains(
+                "<body"
+        )) {
+
             return false;
         }
 
         if (lower.contains(
                 "<script src=\"\""
         )) {
+
             return false;
         }
 
         if (lower.contains(
                 "href=\"javascript:"
         )) {
+
             return false;
         }
 
@@ -623,6 +860,7 @@ public class CodeTestEngine {
                 '{',
                 '}'
         )) {
+
             return false;
         }
 
@@ -645,6 +883,7 @@ public class CodeTestEngine {
                 || compact.contains(
                 "height:;"
         )) {
+
             return false;
         }
 
@@ -670,19 +909,26 @@ public class CodeTestEngine {
                 '[',
                 ']'
         )) {
+
             return false;
         }
 
         String lower =
-                content.toLowerCase(Locale.ROOT);
+                content.toLowerCase(
+                        Locale.ROOT
+                );
 
-        if (lower.contains("debugger;")) {
+        if (lower.contains(
+                "debugger;"
+        )) {
+
             return false;
         }
 
         if (lower.contains(
                 "javascript:javascript:"
         )) {
+
             return false;
         }
 
@@ -701,7 +947,9 @@ public class CodeTestEngine {
         }
 
         String lower =
-                content.toLowerCase(Locale.ROOT);
+                content.toLowerCase(
+                        Locale.ROOT
+                );
 
         String[] blocked = {
                 "runtime.getruntime",
@@ -724,9 +972,13 @@ public class CodeTestEngine {
                 "bypass antivirus"
         };
 
-        for (String blockedValue : blocked) {
+        for (String blockedValue :
+                blocked) {
 
-            if (lower.contains(blockedValue)) {
+            if (lower.contains(
+                    blockedValue
+            )) {
+
                 return false;
             }
         }
@@ -739,7 +991,9 @@ public class CodeTestEngine {
     ) {
 
         String lower =
-                content.toLowerCase(Locale.ROOT);
+                content.toLowerCase(
+                        Locale.ROOT
+                );
 
         return lower.contains(
                 "throw new unsupportedoperationexception"
@@ -769,9 +1023,12 @@ public class CodeTestEngine {
         boolean inBlockComment = false;
         boolean escaped = false;
 
-        for (int i = 0; i < content.length(); i++) {
+        for (int i = 0;
+             i < content.length();
+             i++) {
 
-            char c = content.charAt(i);
+            char c =
+                    content.charAt(i);
 
             char next =
                     i + 1 < content.length()
@@ -780,7 +1037,9 @@ public class CodeTestEngine {
 
             if (inLineComment) {
 
-                if (c == '\n' || c == '\r') {
+                if (c == '\n'
+                        || c == '\r') {
+
                     inLineComment = false;
                 }
 
@@ -789,7 +1048,9 @@ public class CodeTestEngine {
 
             if (inBlockComment) {
 
-                if (c == '*' && next == '/') {
+                if (c == '*'
+                        && next == '/') {
+
                     inBlockComment = false;
                     i++;
                 }
@@ -798,12 +1059,15 @@ public class CodeTestEngine {
             }
 
             if (escaped) {
+
                 escaped = false;
                 continue;
             }
 
-            if ((inDoubleString || inSingleString)
+            if ((inDoubleString
+                    || inSingleString)
                     && c == '\\') {
+
                 escaped = true;
                 continue;
             }
@@ -812,6 +1076,7 @@ public class CodeTestEngine {
                     && !inDoubleString
                     && c == '/'
                     && next == '/') {
+
                 inLineComment = true;
                 i++;
                 continue;
@@ -821,27 +1086,40 @@ public class CodeTestEngine {
                     && !inDoubleString
                     && c == '/'
                     && next == '*') {
+
                 inBlockComment = true;
                 i++;
                 continue;
             }
 
-            if (!inSingleString && c == '"') {
-                inDoubleString = !inDoubleString;
+            if (!inSingleString
+                    && c == '"') {
+
+                inDoubleString =
+                        !inDoubleString;
+
                 continue;
             }
 
-            if (!inDoubleString && c == '\'') {
-                inSingleString = !inSingleString;
+            if (!inDoubleString
+                    && c == '\'') {
+
+                inSingleString =
+                        !inSingleString;
+
                 continue;
             }
 
-            if (inDoubleString || inSingleString) {
+            if (inDoubleString
+                    || inSingleString) {
+
                 continue;
             }
 
             if (c == opening) {
+
                 depth++;
+
             } else if (c == closing) {
 
                 depth--;
@@ -863,7 +1141,9 @@ public class CodeTestEngine {
     ) {
 
         String lower =
-                content.toLowerCase(Locale.ROOT);
+                content.toLowerCase(
+                        Locale.ROOT
+                );
 
         String[] tags = {
                 "html",
@@ -880,7 +1160,8 @@ public class CodeTestEngine {
                 "style"
         };
 
-        for (String tag : tags) {
+        for (String tag :
+                tags) {
 
             int open =
                     countOpeningTags(
@@ -923,6 +1204,7 @@ public class CodeTestEngine {
                     index + target.length();
 
             if (after >= value.length()) {
+
                 count++;
                 break;
             }
@@ -933,6 +1215,7 @@ public class CodeTestEngine {
             if (Character.isWhitespace(next)
                     || next == '>'
                     || next == '/') {
+
                 count++;
             }
 
@@ -971,8 +1254,12 @@ public class CodeTestEngine {
             return false;
         }
 
-        return file.startsWith("src/main/")
-                || file.startsWith("src/test/");
+        return file.startsWith(
+                "src/main/"
+        )
+                || file.startsWith(
+                "src/test/"
+        );
     }
 
     private boolean isSupportedFile(
@@ -984,7 +1271,9 @@ public class CodeTestEngine {
         }
 
         String lower =
-                file.toLowerCase(Locale.ROOT);
+                file.toLowerCase(
+                        Locale.ROOT
+                );
 
         return lower.endsWith(".java")
                 || lower.endsWith(".html")
@@ -998,22 +1287,34 @@ public class CodeTestEngine {
                 || lower.endsWith(".md");
     }
 
-    private boolean isJava(String file) {
+    private boolean isJava(
+            String file
+    ) {
+
         return file != null
                 && file.endsWith(".java");
     }
 
-    private boolean isHtml(String file) {
+    private boolean isHtml(
+            String file
+    ) {
+
         return file != null
                 && file.endsWith(".html");
     }
 
-    private boolean isCss(String file) {
+    private boolean isCss(
+            String file
+    ) {
+
         return file != null
                 && file.endsWith(".css");
     }
 
-    private boolean isJavaScript(String file) {
+    private boolean isJavaScript(
+            String file
+    ) {
+
         return file != null
                 && file.endsWith(".js");
     }
@@ -1026,9 +1327,28 @@ public class CodeTestEngine {
             return "";
         }
 
-        return file
-                .replace('\\', '/')
-                .replaceAll("^/+", "");
+        String normalized =
+                file
+                        .replace(
+                                '\\',
+                                '/'
+                        )
+                        .replaceAll(
+                                "^/+",
+                                ""
+                        );
+
+        while (normalized.startsWith(
+                "./"
+        )) {
+
+            normalized =
+                    normalized.substring(
+                            2
+                    );
+        }
+
+        return normalized;
     }
 
     private TestResult failed(
@@ -1050,6 +1370,7 @@ public class CodeTestEngine {
 
         if (e == null
                 || e.getMessage() == null) {
+
             return "unknown error";
         }
 
