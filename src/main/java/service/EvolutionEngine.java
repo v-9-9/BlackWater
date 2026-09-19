@@ -36,12 +36,8 @@ public class EvolutionEngine {
             ImprovementEngine improvementEngine,
             BenchmarkEngine benchmarkEngine
     ) {
-
-        this.improvementEngine =
-                improvementEngine;
-
-        this.benchmarkEngine =
-                benchmarkEngine;
+        this.improvementEngine = improvementEngine;
+        this.benchmarkEngine = benchmarkEngine;
 
         initializeDefaults();
         loadState();
@@ -56,6 +52,10 @@ public class EvolutionEngine {
 
             DomainState state =
                     states.get(domain);
+
+            if (state == null) {
+                continue;
+            }
 
             result.add(
                     new DomainState(
@@ -119,6 +119,14 @@ public class EvolutionEngine {
 
             saveState();
 
+            logCycle(
+                    target,
+                    before,
+                    before,
+                    0,
+                    false
+            );
+
             return new EvolutionCycle(
                     true,
                     target.name(),
@@ -130,8 +138,7 @@ public class EvolutionEngine {
         }
 
         int after =
-                Math.max(
-                        0,
+                scoreToPercentage(
                         result.afterScore()
                 );
 
@@ -153,7 +160,10 @@ public class EvolutionEngine {
                     );
 
             state.power(
-                    state.power() + gain
+                    Math.max(
+                            0,
+                            state.power() + gain
+                    )
             );
         }
 
@@ -287,19 +297,42 @@ public class EvolutionEngine {
 
         try {
 
-            return benchmarkEngine
-                    .run(
-                            domain.name()
-                                    .toLowerCase(
-                                            Locale.ROOT
-                                    )
-                    )
-                    .score();
+            double score =
+                    benchmarkEngine
+                            .run(
+                                    domain.name()
+                                            .toLowerCase(
+                                                    Locale.ROOT
+                                            )
+                            )
+                            .averageScore();
+
+            return scoreToPercentage(score);
 
         } catch (Exception ignored) {
 
             return 0;
         }
+    }
+
+    private int scoreToPercentage(
+            double score
+    ) {
+
+        if (Double.isNaN(score)
+                || Double.isInfinite(score)) {
+            return 0;
+        }
+
+        return (int) Math.round(
+                Math.max(
+                        0.0,
+                        Math.min(
+                                1.0,
+                                score
+                        )
+                ) * 100.0
+        );
     }
 
     private Domain parseDomain(
@@ -405,23 +438,30 @@ public class EvolutionEngine {
 
             for (String line : lines) {
 
+                if (line == null
+                        || line.isBlank()) {
+                    continue;
+                }
+
                 String[] parts =
                         line.split(
                                 "\\|",
                                 -1
                         );
 
-                if (parts.length < 7) {
+                if ("RUNNING".equals(parts[0])) {
+
+                    if (parts.length >= 2) {
+                        running =
+                                Boolean.parseBoolean(
+                                        parts[1]
+                                );
+                    }
+
                     continue;
                 }
 
-                if ("RUNNING".equals(parts[0])) {
-
-                    running =
-                            Boolean.parseBoolean(
-                                    parts[1]
-                            );
-
+                if (parts.length < 6) {
                     continue;
                 }
 
@@ -503,6 +543,10 @@ public class EvolutionEngine {
 
             DomainState state =
                     states.get(domain);
+
+            if (state == null) {
+                continue;
+            }
 
             lines.add(
                     domain.name()
