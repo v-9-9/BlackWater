@@ -85,7 +85,7 @@ public class ImprovementEngine {
         improvementPlanner.markFeatureStarted(feature);
 
         /*
-         * 1. Benchmark BEFORE making any change.
+         * 1. Measure the current live system.
          */
         BenchmarkEngine.BenchmarkResult before =
                 benchmarkEngine.run(domain);
@@ -93,7 +93,7 @@ public class ImprovementEngine {
         double beforeScore = before.averageScore();
 
         /*
-         * 2. Research and learn information relevant to the target.
+         * 2. Research information relevant to the improvement.
          */
         try {
             if (plan.researchTopic() != null
@@ -103,8 +103,7 @@ public class ImprovementEngine {
             }
         } catch (Exception ignored) {
             /*
-             * Learning failure must not destroy the entire evolution cycle.
-             * The generated improvement can still be evaluated safely.
+             * Research failure must not destroy the evolution cycle.
              */
         }
 
@@ -136,9 +135,7 @@ public class ImprovementEngine {
         }
 
         /*
-         * 4. Create the single sandbox experiment.
-         *
-         * CodeGenerationEngine will use this SAME experiment.
+         * 4. Create ONE sandbox experiment.
          */
         String experimentId;
 
@@ -163,7 +160,7 @@ public class ImprovementEngine {
         }
 
         /*
-         * 5. Generate actual replacement files inside that experiment.
+         * 5. Generate replacement files into that experiment.
          */
         CodeGenerationEngine.GenerationResult generation;
 
@@ -231,7 +228,7 @@ public class ImprovementEngine {
         }
 
         /*
-         * 7. Structural code tests.
+         * 7. Structural and content tests.
          */
         CodeTestEngine.TestResult testResult;
 
@@ -256,41 +253,10 @@ public class ImprovementEngine {
         }
 
         /*
-         * 8. Benchmark the generated improvement BEFORE applying it.
+         * 8. Apply the candidate to the live project.
          *
-         * Important:
-         * The benchmark implementation must evaluate the experiment
-         * rather than blindly trusting generated code.
-         *
-         * Until the benchmark engine becomes experiment-aware,
-         * this score represents the current system state.
+         * CodeChangeApplier creates a backup first.
          */
-        BenchmarkEngine.BenchmarkResult generatedScore =
-                benchmarkEngine.run(domain);
-
-        double afterScore = generatedScore.averageScore();
-        double improvement = afterScore - beforeScore;
-
-        /*
-         * 9. Only apply code when the measured score improved.
-         *
-         * No improvement = no live project modification.
-         */
-        if (improvement <= 0.0) {
-            return new ImprovementResult(
-                    domain,
-                    feature,
-                    experimentId,
-                    false,
-                    false,
-                    beforeScore,
-                    afterScore,
-                    improvement,
-                    generatedFiles,
-                    "Improvement did not exceed the previous benchmark."
-            );
-        }
-
         CodeChangeApplier.ApplyResult applyResult;
 
         try {
@@ -302,12 +268,55 @@ public class ImprovementEngine {
             return failedResult(
                     domain,
                     feature,
-                    "Failed to apply verified improvement: "
+                    "Failed to apply candidate change: "
                             + safeMessage(e)
             );
         }
 
         if (applyResult == null || !applyResult.success()) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Candidate change could not be applied."
+            );
+        }
+
+        String backupId = applyResult.backupId();
+
+        /*
+         * 9. Benchmark the ACTUAL modified project.
+         */
+        BenchmarkEngine.BenchmarkResult after;
+
+        try {
+            after = benchmarkEngine.run(domain);
+        } catch (Exception e) {
+
+            rollbackSafely(
+                    backupId,
+                    generatedFiles
+            );
+
+            return failedResult(
+                    domain,
+                    feature,
+                    "Post-change benchmark failed. Change rolled back."
+            );
+        }
+
+        double afterScore = after.averageScore();
+        double improvement = afterScore - beforeScore;
+
+        /*
+         * 10. Keep only genuine improvement.
+         */
+        if (improvement <= 0.0) {
+
+            rollbackSafely(
+                    backupId,
+                    generatedFiles
+            );
+
             return new ImprovementResult(
                     domain,
                     feature,
@@ -318,12 +327,12 @@ public class ImprovementEngine {
                     afterScore,
                     improvement,
                     generatedFiles,
-                    "Improvement was measured but could not be applied."
+                    "No measurable improvement. Change rolled back."
             );
         }
 
         /*
-         * 10. Mark feature successful only after live application.
+         * 11. Successful live evolution.
          */
         improvementPlanner.markFeatureSuccessful(feature);
 
@@ -337,8 +346,25 @@ public class ImprovementEngine {
                 afterScore,
                 improvement,
                 generatedFiles,
-                "Improvement verified, benchmarked, and applied."
+                "Improvement verified, tested, benchmarked, and kept."
         );
+    }
+
+    private void rollbackSafely(
+            String backupId,
+            List<String> files
+    ) {
+        if (backupId == null || backupId.isBlank()) {
+            return;
+        }
+
+        try {
+            codeChangeApplier.rollback(
+                    backupId,
+                    files
+            );
+        } catch (Exception ignored) {
+        }
     }
 
     private ImprovementResult failedResult(
