@@ -13,17 +13,20 @@ public class BenchmarkEngine {
     private final LearningEngine learningEngine;
     private final AIService aiService;
     private final BenchmarkTaskBank taskBank;
+    private final BenchmarkHistory benchmarkHistory;
 
     public BenchmarkEngine(
             KnowledgeService knowledgeService,
             LearningEngine learningEngine,
             AIService aiService,
-            BenchmarkTaskBank taskBank
+            BenchmarkTaskBank taskBank,
+            BenchmarkHistory benchmarkHistory
     ) {
         this.knowledgeService = knowledgeService;
         this.learningEngine = learningEngine;
         this.aiService = aiService;
         this.taskBank = taskBank;
+        this.benchmarkHistory = benchmarkHistory;
     }
 
     public synchronized BenchmarkResult run(
@@ -102,7 +105,6 @@ public class BenchmarkEngine {
         }
 
         double earnedPoints = 0;
-
         double maximumPoints = 0;
 
         int passed = 0;
@@ -111,8 +113,8 @@ public class BenchmarkEngine {
                 new ArrayList<>();
 
         for (
-                BenchmarkTaskBank.BenchmarkTask task
-                : tasks
+                BenchmarkTaskBank.BenchmarkTask task :
+                tasks
         ) {
 
             int difficulty =
@@ -153,7 +155,6 @@ public class BenchmarkEngine {
             )) {
 
                 earnedPoints += points;
-
                 passed++;
 
                 details.add(
@@ -231,17 +232,16 @@ public class BenchmarkEngine {
         }
 
         double earnedPoints = 0;
-
         double maximumPoints = 0;
+
+        int passed = 0;
 
         List<String> details =
                 new ArrayList<>();
 
-        int passed = 0;
-
         for (
-                BenchmarkTaskBank.BenchmarkTask task
-                : tasks
+                BenchmarkTaskBank.BenchmarkTask task :
+                tasks
         ) {
 
             int difficulty =
@@ -298,10 +298,12 @@ public class BenchmarkEngine {
             try {
 
                 knowledgeAvailable =
-                        !knowledgeService.search(
-                                task.expected()
-                                        .getFirst()
-                        ).isEmpty();
+                        !knowledgeService
+                                .search(
+                                        task.expected()
+                                                .getFirst()
+                                )
+                                .isEmpty();
 
             } catch (Exception e) {
 
@@ -311,7 +313,6 @@ public class BenchmarkEngine {
             if (knowledgeAvailable) {
 
                 earnedPoints += difficulty;
-
                 passed++;
 
                 details.add(
@@ -383,8 +384,6 @@ public class BenchmarkEngine {
 
         int score = 0;
 
-        int completed = 0;
-
         List<String> details =
                 new ArrayList<>();
 
@@ -440,16 +439,13 @@ public class BenchmarkEngine {
             );
         }
 
-        completed =
-                tasks.size();
-
         return new BenchmarkResult(
                 "memory",
                 Math.min(
                         100,
                         score
                 ),
-                completed,
+                tasks.size(),
                 details
         );
     }
@@ -469,7 +465,9 @@ public class BenchmarkEngine {
 
         String normalizedResponse =
                 response
-                        .toLowerCase(Locale.ROOT)
+                        .toLowerCase(
+                                Locale.ROOT
+                        )
                         .replaceAll(
                                 "[^\\p{L}\\p{N}+.#_-]+",
                                 " "
@@ -481,7 +479,6 @@ public class BenchmarkEngine {
 
             if (expectedValue == null
                     || expectedValue.isBlank()) {
-
                 continue;
             }
 
@@ -506,19 +503,29 @@ public class BenchmarkEngine {
     public synchronized BenchmarkSummary runAll() {
 
         BenchmarkResult knowledge =
-                run("knowledge");
+                run(
+                        "knowledge"
+                );
 
         BenchmarkResult reasoning =
-                run("reasoning");
+                run(
+                        "reasoning"
+                );
 
         BenchmarkResult research =
-                run("research");
+                run(
+                        "research"
+                );
 
         BenchmarkResult coding =
-                run("coding");
+                run(
+                        "coding"
+                );
 
         BenchmarkResult memory =
-                run("memory");
+                run(
+                        "memory"
+                );
 
         int total =
                 knowledge.score()
@@ -530,14 +537,32 @@ public class BenchmarkEngine {
         int average =
                 total / 5;
 
-        return new BenchmarkSummary(
-                average,
-                knowledge,
-                reasoning,
-                research,
-                coding,
-                memory
-        );
+        BenchmarkSummary summary =
+                new BenchmarkSummary(
+                        average,
+                        knowledge,
+                        reasoning,
+                        research,
+                        coding,
+                        memory
+                );
+
+        try {
+
+            benchmarkHistory.record(
+                    summary
+            );
+
+        } catch (Exception ignored) {
+        }
+
+        return summary;
+    }
+
+    public synchronized BenchmarkHistory
+    getHistoryService() {
+
+        return benchmarkHistory;
     }
 
     public record BenchmarkResult(
