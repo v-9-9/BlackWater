@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
     <title>Blackwater</title>
 
     <style>
@@ -67,20 +66,29 @@
             flex-shrink: 0;
         }
 
-        .brand {
+        .brand,
+        .topbar-brand {
             display: flex;
             align-items: center;
+        }
+
+        .brand {
             gap: 10px;
             margin-bottom: 22px;
             padding: 4px;
+        }
+
+        .brand-logo,
+        .topbar-logo,
+        .welcome-logo {
+            object-fit: cover;
+            background: #202027;
         }
 
         .brand-logo {
             width: 38px;
             height: 38px;
             border-radius: 11px;
-            object-fit: cover;
-            background: #202027;
         }
 
         .brand-name {
@@ -96,7 +104,7 @@
             padding: 12px;
             cursor: pointer;
             text-align: left;
-            transition: 0.2s;
+            transition: .2s;
         }
 
         .new-chat:hover {
@@ -138,7 +146,6 @@
             border-top: 1px solid var(--border);
             padding-top: 12px;
             margin-top: 12px;
-            flex-shrink: 0;
         }
 
         .settings-button {
@@ -185,8 +192,6 @@
         }
 
         .topbar-brand {
-            display: flex;
-            align-items: center;
             gap: 9px;
         }
 
@@ -194,8 +199,6 @@
             width: 30px;
             height: 30px;
             border-radius: 9px;
-            object-fit: cover;
-            background: #202027;
         }
 
         .topbar-name {
@@ -222,8 +225,6 @@
             width: 75px;
             height: 75px;
             border-radius: 22px;
-            object-fit: cover;
-            background: #202027;
             margin-bottom: 18px;
         }
 
@@ -254,10 +255,6 @@
             word-wrap: break-word;
         }
 
-        .user .message-content {
-            color: white;
-        }
-
         .assistant .message-content {
             color: #d4d4da;
         }
@@ -273,18 +270,24 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            max-width: 280px;
+            max-width: 300px;
             padding: 7px 9px;
             border: 1px solid var(--border);
             background: var(--panel);
             border-radius: 9px;
             font-size: 12px;
             color: var(--muted);
+            cursor: pointer;
+        }
+
+        .message-attachment:hover {
+            background: var(--panel-hover);
+            color: white;
         }
 
         .message-attachment img {
-            width: 34px;
-            height: 34px;
+            width: 42px;
+            height: 42px;
             object-fit: cover;
             border-radius: 7px;
         }
@@ -326,15 +329,14 @@
             white-space: nowrap;
         }
 
-        .mode-button:hover {
-            background: var(--panel-hover);
+        .mode-button:hover,
+        .mode-button.active {
             color: white;
+            background: var(--panel-hover);
         }
 
         .mode-button.active {
-            color: white;
             border-color: #50505a;
-            background: #1d1d24;
         }
 
         .attachment-list {
@@ -353,7 +355,7 @@
             display: flex;
             align-items: center;
             gap: 8px;
-            max-width: 280px;
+            max-width: 300px;
             min-height: 48px;
             padding: 6px 8px;
             background: var(--panel);
@@ -361,26 +363,25 @@
             border-radius: 11px;
         }
 
-        .attachment-preview {
-            width: 36px;
-            height: 36px;
-            border-radius: 7px;
-            object-fit: cover;
-            flex-shrink: 0;
-            background: #202027;
-        }
-
+        .attachment-preview,
         .attachment-file-icon {
             width: 36px;
             height: 36px;
             border-radius: 7px;
+            flex-shrink: 0;
+        }
+
+        .attachment-preview {
+            object-fit: cover;
+        }
+
+        .attachment-file-icon {
             background: #202027;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 13px;
+            font-size: 11px;
             color: var(--muted);
-            flex-shrink: 0;
         }
 
         .attachment-info {
@@ -391,7 +392,7 @@
         }
 
         .attachment-name {
-            max-width: 190px;
+            max-width: 205px;
             overflow: hidden;
             white-space: nowrap;
             text-overflow: ellipsis;
@@ -400,6 +401,11 @@
 
         .attachment-size {
             color: var(--muted);
+            font-size: 10px;
+        }
+
+        .attachment-status {
+            color: var(--success);
             font-size: 10px;
         }
 
@@ -429,6 +435,12 @@
             border: 1px solid var(--border);
             border-radius: 16px;
             padding: 9px;
+            transition: border-color .2s, background .2s;
+        }
+
+        .input-box.dragover {
+            border-color: #777780;
+            background: #1d1d24;
         }
 
         textarea {
@@ -450,19 +462,23 @@
             color: #70707a;
         }
 
-        .attach-button {
+        .attach-button,
+        .send {
             flex-shrink: 0;
             width: 45px;
             height: 45px;
-            border: 1px solid var(--border);
             border-radius: 12px;
-            background: #111116;
-            color: var(--muted);
             cursor: pointer;
-            font-size: 20px;
             display: flex;
             align-items: center;
             justify-content: center;
+        }
+
+        .attach-button {
+            border: 1px solid var(--border);
+            background: #111116;
+            color: var(--muted);
+            font-size: 20px;
         }
 
         .attach-button:hover {
@@ -470,8 +486,9 @@
             color: white;
         }
 
-        .attach-button:disabled {
-            opacity: 0.5;
+        .attach-button:disabled,
+        .send:disabled {
+            opacity: .5;
             cursor: not-allowed;
         }
 
@@ -480,30 +497,26 @@
         }
 
         .send {
-            flex-shrink: 0;
-            width: 45px;
-            height: 45px;
             border: 0;
-            border-radius: 12px;
             background: white;
             color: black;
-            cursor: pointer;
             font-size: 18px;
         }
 
         .send:hover {
-            background: #dddddd;
+            background: #ddd;
         }
 
-        .send:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+        .upload-error {
+            color: var(--danger);
+            font-size: 11px;
+            margin: 4px 2px 0;
         }
 
         .settings-overlay {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.65);
+            background: rgba(0,0,0,.65);
             display: none;
             align-items: center;
             justify-content: center;
@@ -517,14 +530,14 @@
 
         .settings {
             position: relative;
-            width: min(620px, 100%);
-            max-height: min(88vh, 780px);
+            width: min(620px,100%);
+            max-height: min(88vh,780px);
             overflow-y: auto;
             background: #111116;
             border: 1px solid var(--border);
             border-radius: 18px;
             padding: 22px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+            box-shadow: 0 20px 60px rgba(0,0,0,.45);
         }
 
         .settings-header {
@@ -555,7 +568,6 @@
             color: var(--muted);
             border-radius: 10px;
             font-size: 25px;
-            line-height: 1;
             cursor: pointer;
         }
 
@@ -645,12 +657,12 @@
 
         .evolution-dot.running {
             background: var(--success);
-            box-shadow: 0 0 12px rgba(126, 231, 135, 0.45);
+            box-shadow: 0 0 12px rgba(126,231,135,.45);
         }
 
         .evolution-controls {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(3,1fr);
             gap: 8px;
             margin-bottom: 16px;
         }
@@ -669,22 +681,26 @@
         }
 
         .evolution-control.primary {
-            background: #eeeeee;
+            background: #eee;
             color: #000;
-            border-color: #eeeeee;
+            border-color: #eee;
         }
 
         .power-summary {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(2,1fr);
             gap: 9px;
             margin-bottom: 16px;
         }
 
-        .power-card {
+        .power-card,
+        .domain-card {
             background: var(--panel);
             border: 1px solid var(--border);
             border-radius: 12px;
+        }
+
+        .power-card {
             padding: 13px;
         }
 
@@ -706,13 +722,11 @@
         }
 
         .domain-card {
-            background: var(--panel);
-            border: 1px solid var(--border);
-            border-radius: 12px;
             padding: 13px;
         }
 
-        .domain-header {
+        .domain-header,
+        .domain-meta {
             display: flex;
             align-items: center;
             justify-content: space-between;
@@ -730,10 +744,6 @@
         }
 
         .domain-meta {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            gap: 8px;
             margin-top: 8px;
             color: var(--muted);
             font-size: 11px;
@@ -777,8 +787,7 @@
             min-height: 16px;
         }
 
-        @media (max-width: 700px) {
-
+        @media (max-width:700px) {
             .sidebar {
                 position: fixed;
                 left: -280px;
@@ -786,7 +795,7 @@
                 bottom: 0;
                 height: 100dvh;
                 z-index: 90;
-                transition: left 0.2s;
+                transition: left .2s;
             }
 
             .sidebar.open {
@@ -807,10 +816,6 @@
 
             .input-area {
                 padding: 8px 12px 12px;
-            }
-
-            .mode-selector {
-                margin-bottom: 7px;
             }
 
             .mode-button {
@@ -838,25 +843,13 @@
                 padding: 20px;
             }
 
-            .settings-header {
-                top: -20px;
-            }
-
             .evolution-controls {
                 grid-template-columns: 1fr;
-            }
-
-            .power-summary {
-                grid-template-columns: 1fr 1fr;
             }
 
             .attachment-chip {
                 max-width: 100%;
                 flex: 1 1 100%;
-            }
-
-            .attachment-name {
-                max-width: calc(100vw - 150px);
             }
         }
     </style>
@@ -885,10 +878,7 @@
             Conversations
         </div>
 
-        <div
-            class="conversations"
-            id="conversations"
-        ></div>
+        <div class="conversations" id="conversations"></div>
 
         <div class="sidebar-bottom">
             <button
@@ -914,45 +904,30 @@
             </button>
 
             <div class="topbar-brand">
-
                 <img
                     class="topbar-logo"
                     src="/images/blackwater-logo.png"
                     alt="Blackwater"
                 >
-
                 <div class="topbar-name">
                     Blackwater
                 </div>
-
             </div>
 
         </div>
 
-        <div
-            class="messages"
-            id="messages"
-        >
+        <div class="messages" id="messages">
 
-            <div
-                class="welcome"
-                id="welcome"
-            >
-
+            <div class="welcome" id="welcome">
                 <div>
-
                     <img
                         class="welcome-logo"
                         src="/images/blackwater-logo.png"
                         alt="Blackwater"
                     >
-
                     <h1>Blackwater</h1>
-
                     <p>How can I help you today?</p>
-
                 </div>
-
             </div>
 
         </div>
@@ -994,15 +969,22 @@
                     id="attachmentList"
                 ></div>
 
+                <div
+                    class="upload-error"
+                    id="uploadError"
+                ></div>
+
                 <input
                     type="file"
                     id="fileInput"
                     multiple
                     accept="image/*,.txt,.md,.json,.xml,.csv,.java,.html,.css,.js,.ts,.jsx,.tsx,.properties,.yml,.yaml,.log,.sql,.py,.c,.cpp,.h,.hpp,.sh,.bat,.pdf,.doc,.docx"
-                    onchange="handleFiles(event)"
                 >
 
-                <div class="input-box">
+                <div
+                    class="input-box"
+                    id="inputBox"
+                >
 
                     <button
                         class="attach-button"
@@ -1018,8 +1000,6 @@
                         id="message"
                         placeholder="Message Blackwater..."
                         rows="1"
-                        oninput="autoResize()"
-                        onkeydown="handleKey(event)"
                     ></textarea>
 
                     <button
@@ -1183,7 +1163,6 @@
             <div class="power-summary">
 
                 <div class="power-card">
-
                     <div class="power-card-label">
                         Total power
                     </div>
@@ -1194,11 +1173,9 @@
                     >
                         0
                     </div>
-
                 </div>
 
                 <div class="power-card">
-
                     <div class="power-card-label">
                         Evolution cycles
                     </div>
@@ -1209,7 +1186,6 @@
                     >
                         0
                     </div>
-
                 </div>
 
             </div>
@@ -1266,310 +1242,481 @@
 
 <script>
 
-    let currentConversationId = null;
+let currentConversationId = null;
 
-    let currentMode =
-        localStorage.getItem("blackwater-mode")
-        || "swift";
+let currentMode =
+    localStorage.getItem("blackwater-mode")
+    || "swift";
 
-    let sending = false;
+let sending = false;
 
-    let evolutionState = null;
+let evolutionState = null;
 
-    let attachments = [];
+let attachments = [];
 
+const MAX_ATTACHMENTS = 10;
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
-    function selectMode(mode) {
-
-        currentMode = mode;
-
-        localStorage.setItem(
-            "blackwater-mode",
-            mode
-        );
-
-        document
-            .querySelectorAll(".mode-button")
-            .forEach(button => {
-
-                button.classList.toggle(
-                    "active",
-                    button.dataset.mode === mode
-                );
-
-            });
-
-        const defaultMode =
-            document.getElementById("defaultMode");
-
-        if (defaultMode) {
-            defaultMode.value = mode;
-        }
-    }
+const allowedExtensions = new Set([
+    "txt","md","json","xml","csv","java",
+    "html","css","js","ts","jsx","tsx",
+    "properties","yml","yaml","log","sql",
+    "py","c","cpp","h","hpp","sh","bat",
+    "pdf","doc","docx","png","jpg","jpeg",
+    "webp","gif","bmp","svg"
+]);
 
 
-    function toggleSidebar() {
+function selectMode(mode) {
 
-        document
-            .getElementById("sidebar")
-            .classList.toggle("open");
-    }
+    currentMode = mode;
 
+    localStorage.setItem(
+        "blackwater-mode",
+        mode
+    );
 
-    function closeSidebarMobile() {
+    document
+        .querySelectorAll(".mode-button")
+        .forEach(button => {
 
-        document
-            .getElementById("sidebar")
-            .classList.remove("open");
-    }
-
-
-    function openFilePicker() {
-
-        if (sending) {
-            return;
-        }
-
-        document
-            .getElementById("fileInput")
-            .click();
-    }
-
-
-    async function handleFiles(event) {
-
-        const files =
-            Array.from(event.target.files || []);
-
-        if (!files.length) {
-            return;
-        }
-
-        const availableSlots =
-            10 - attachments.length;
-
-        if (availableSlots <= 0) {
-            alert("Maximum 10 attachments.");
-            event.target.value = "";
-            return;
-        }
-
-        const selected =
-            files.slice(0, availableSlots);
-
-        const attachButton =
-            document.getElementById("attachButton");
-
-        attachButton.disabled = true;
-
-        try {
-
-            for (const file of selected) {
-
-                await uploadAttachment(file);
-            }
-
-        } catch (error) {
-
-            console.error(error);
-
-        } finally {
-
-            attachButton.disabled = false;
-
-            event.target.value = "";
-        }
-    }
-
-
-    async function uploadAttachment(file) {
-
-        const formData =
-            new FormData();
-
-        formData.append(
-            "file",
-            file
-        );
-
-        try {
-
-            const response =
-                await fetch(
-                    "/api/attachments",
-                    {
-                        method: "POST",
-                        body: formData
-                    }
-                );
-
-            const result =
-                await response.json();
-
-            if (!response.ok || !result.success) {
-                throw new Error(
-                    result.error
-                    || "Upload failed"
-                );
-            }
-
-            attachments.push({
-                id: result.id,
-                name: result.name,
-                type: result.type,
-                size: Number(result.size || file.size),
-                contentType:
-                    result.contentType
-                    || file.type
-                    || "application/octet-stream",
-                url: result.url
-            });
-
-            renderAttachments();
-
-        } catch (error) {
-
-            console.error(error);
-
-            alert(
-                "Could not upload "
-                + file.name
-                + "."
-            );
-        }
-    }
-
-
-    function renderAttachments() {
-
-        const container =
-            document.getElementById(
-                "attachmentList"
+            button.classList.toggle(
+                "active",
+                button.dataset.mode === mode
             );
 
-        container.innerHTML = "";
+        });
 
-        container.classList.toggle(
-            "has-files",
-            attachments.length > 0
+    const defaultMode =
+        document.getElementById("defaultMode");
+
+    if (defaultMode) {
+        defaultMode.value = mode;
+    }
+}
+
+
+function toggleSidebar() {
+
+    document
+        .getElementById("sidebar")
+        .classList.toggle("open");
+}
+
+
+function closeSidebarMobile() {
+
+    document
+        .getElementById("sidebar")
+        .classList.remove("open");
+}
+
+
+function openFilePicker() {
+
+    if (sending) {
+        return;
+    }
+
+    document
+        .getElementById("fileInput")
+        .click();
+}
+
+
+function showUploadError(message) {
+
+    document
+        .getElementById("uploadError")
+        .textContent = message;
+
+    clearTimeout(
+        showUploadError.timer
+    );
+
+    showUploadError.timer =
+        setTimeout(() => {
+
+            document
+                .getElementById("uploadError")
+                .textContent = "";
+
+        }, 5000);
+}
+
+
+function validateFile(file) {
+
+    if (!file) {
+        return "Invalid file.";
+    }
+
+    if (file.size > MAX_FILE_SIZE) {
+        return file.name + " is larger than 25 MB.";
+    }
+
+    const extension =
+        getFileExtension(file.name)
+            .toLowerCase();
+
+    const isImage =
+        file.type.startsWith("image/");
+
+    if (
+        !isImage &&
+        !allowedExtensions.has(extension)
+    ) {
+        return file.name + " is not supported.";
+    }
+
+    return null;
+}
+
+
+async function handleFiles(event) {
+
+    const files =
+        Array.from(
+            event.target.files || []
         );
 
-        attachments.forEach(
-            (attachment, index) => {
+    event.target.value = "";
 
-                const chip =
-                    document.createElement("div");
+    await processFiles(files);
+}
 
-                chip.className =
-                    "attachment-chip";
 
-                if (
-                    attachment.type === "image"
-                ) {
+async function processFiles(files) {
 
-                    const image =
-                        document.createElement("img");
+    if (!files.length) {
+        return;
+    }
 
-                    image.className =
-                        "attachment-preview";
+    const availableSlots =
+        MAX_ATTACHMENTS - attachments.length;
 
-                    image.src =
-                        attachment.url;
+    if (availableSlots <= 0) {
+        showUploadError(
+            "Maximum 10 attachments."
+        );
+        return;
+    }
 
-                    image.alt =
-                        attachment.name;
+    const selected =
+        files.slice(0, availableSlots);
 
-                    chip.appendChild(image);
+    const attachButton =
+        document.getElementById(
+            "attachButton"
+        );
 
-                } else {
+    attachButton.disabled = true;
 
-                    const icon =
-                        document.createElement("div");
+    for (const file of selected) {
 
-                    icon.className =
-                        "attachment-file-icon";
+        const error =
+            validateFile(file);
 
-                    icon.textContent =
-                        getFileExtension(
-                            attachment.name
-                        ).toUpperCase()
-                        || "FILE";
+        if (error) {
+            showUploadError(error);
+            continue;
+        }
 
-                    chip.appendChild(icon);
+        await uploadAttachment(file);
+    }
+
+    attachButton.disabled = false;
+}
+
+
+async function uploadAttachment(file) {
+
+    const formData =
+        new FormData();
+
+    formData.append(
+        "file",
+        file
+    );
+
+    const temporaryId =
+        "upload-" + Date.now() + "-" + Math.random();
+
+    const temporary = {
+        id: temporaryId,
+        name: file.name,
+        type: file.type.startsWith("image/")
+            ? "image"
+            : "file",
+        size: file.size,
+        contentType:
+            file.type ||
+            "application/octet-stream",
+        url: URL.createObjectURL(file),
+        uploading: true
+    };
+
+    attachments.push(temporary);
+
+    renderAttachments();
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/attachments",
+                {
+                    method: "POST",
+                    body: formData
                 }
+            );
 
-                const info =
-                    document.createElement("div");
+        let result = null;
 
-                info.className =
-                    "attachment-info";
-
-                const name =
-                    document.createElement("div");
-
-                name.className =
-                    "attachment-name";
-
-                name.textContent =
-                    attachment.name;
-
-                const size =
-                    document.createElement("div");
-
-                size.className =
-                    "attachment-size";
-
-                size.textContent =
-                    formatFileSize(
-                        attachment.size
-                    );
-
-                info.appendChild(name);
-                info.appendChild(size);
-
-                const remove =
-                    document.createElement("button");
-
-                remove.className =
-                    "remove-attachment";
-
-                remove.type =
-                    "button";
-
-                remove.textContent =
-                    "×";
-
-                remove.title =
-                    "Remove attachment";
-
-                remove.onclick =
-                    () =>
-                        removeAttachment(index);
-
-                chip.appendChild(info);
-                chip.appendChild(remove);
-
-                container.appendChild(chip);
-            }
-        );
-    }
-
-
-    async function removeAttachment(index) {
-
-        const attachment =
-            attachments[index];
-
-        if (!attachment) {
-            return;
+        try {
+            result = await response.json();
+        } catch {
+            result = null;
         }
 
-        attachments.splice(
-            index,
-            1
+        if (
+            !response.ok ||
+            !result ||
+            !result.success ||
+            !result.id
+        ) {
+            throw new Error(
+                result?.error ||
+                "Upload failed."
+            );
+        }
+
+        const index =
+            attachments.findIndex(
+                item => item.id === temporaryId
+            );
+
+        if (index !== -1) {
+
+            URL.revokeObjectURL(
+                temporary.url
+            );
+
+            attachments[index] = {
+                id: result.id,
+                name: result.name || file.name,
+                type:
+                    result.type ||
+                    (
+                        file.type.startsWith("image/")
+                            ? "image"
+                            : "file"
+                    ),
+                size:
+                    Number(
+                        result.size || file.size
+                    ),
+                contentType:
+                    result.contentType ||
+                    file.type ||
+                    "application/octet-stream",
+                url:
+                    result.url ||
+                    (
+                        "/api/attachments/"
+                        + encodeURIComponent(result.id)
+                    ),
+                uploading: false
+            };
+        }
+
+        renderAttachments();
+
+    } catch (error) {
+
+        console.error(error);
+
+        attachments =
+            attachments.filter(
+                item => item.id !== temporaryId
+            );
+
+        URL.revokeObjectURL(
+            temporary.url
         );
 
         renderAttachments();
+
+        showUploadError(
+            "Could not upload " +
+            file.name +
+            "."
+        );
+    }
+}
+
+
+function renderAttachments() {
+
+    const container =
+        document.getElementById(
+            "attachmentList"
+        );
+
+    container.innerHTML = "";
+
+    container.classList.toggle(
+        "has-files",
+        attachments.length > 0
+    );
+
+    attachments.forEach(
+        (attachment, index) => {
+
+            const chip =
+                document.createElement("div");
+
+            chip.className =
+                "attachment-chip";
+
+            if (
+                attachment.type === "image"
+            ) {
+
+                const image =
+                    document.createElement("img");
+
+                image.className =
+                    "attachment-preview";
+
+                image.src =
+                    attachment.url;
+
+                image.alt =
+                    attachment.name;
+
+                chip.appendChild(image);
+
+            } else {
+
+                const icon =
+                    document.createElement("div");
+
+                icon.className =
+                    "attachment-file-icon";
+
+                icon.textContent =
+                    getFileExtension(
+                        attachment.name
+                    ).toUpperCase()
+                    || "FILE";
+
+                chip.appendChild(icon);
+            }
+
+            const info =
+                document.createElement("div");
+
+            info.className =
+                "attachment-info";
+
+            const name =
+                document.createElement("div");
+
+            name.className =
+                "attachment-name";
+
+            name.textContent =
+                attachment.name;
+
+            const size =
+                document.createElement("div");
+
+            size.className =
+                "attachment-size";
+
+            size.textContent =
+                formatFileSize(
+                    attachment.size
+                );
+
+            info.appendChild(name);
+            info.appendChild(size);
+
+            if (attachment.uploading) {
+
+                const status =
+                    document.createElement("div");
+
+                status.className =
+                    "attachment-status";
+
+                status.textContent =
+                    "Uploading...";
+
+                info.appendChild(status);
+            }
+
+            const remove =
+                document.createElement("button");
+
+            remove.className =
+                "remove-attachment";
+
+            remove.type =
+                "button";
+
+            remove.textContent =
+                "×";
+
+            remove.title =
+                "Remove attachment";
+
+            remove.disabled =
+                attachment.uploading;
+
+            remove.onclick =
+                () =>
+                    removeAttachment(index);
+
+            chip.appendChild(info);
+            chip.appendChild(remove);
+
+            container.appendChild(chip);
+        }
+    );
+}
+
+
+async function removeAttachment(index) {
+
+    const attachment =
+        attachments[index];
+
+    if (!attachment) {
+        return;
+    }
+
+    attachments.splice(
+        index,
+        1
+    );
+
+    if (
+        attachment.url &&
+        attachment.url.startsWith("blob:")
+    ) {
+        URL.revokeObjectURL(
+            attachment.url
+        );
+    }
+
+    renderAttachments();
+
+    if (
+        !attachment.uploading &&
+        attachment.id
+    ) {
 
         try {
 
@@ -1588,179 +1735,205 @@
             console.error(error);
         }
     }
+}
 
 
-    function getFileExtension(name) {
+function getFileExtension(name) {
 
-        if (!name || !name.includes(".")) {
-            return "";
-        }
-
-        return name
-            .split(".")
-            .pop()
-            .substring(0, 5);
+    if (
+        !name ||
+        !name.includes(".")
+    ) {
+        return "";
     }
 
+    return name
+        .split(".")
+        .pop()
+        .substring(0, 10);
+}
 
-    function formatFileSize(bytes) {
 
-        const size =
-            Number(bytes || 0);
+function formatFileSize(bytes) {
 
-        if (size < 1024) {
-            return size + " B";
-        }
+    const size =
+        Number(bytes || 0);
 
-        if (size < 1024 * 1024) {
-            return (
-                size / 1024
-            ).toFixed(1) + " KB";
-        }
+    if (size < 1024) {
+        return size + " B";
+    }
 
-        if (size < 1024 * 1024 * 1024) {
-            return (
-                size / (1024 * 1024)
-            ).toFixed(1) + " MB";
-        }
-
+    if (size < 1024 * 1024) {
         return (
-            size / (1024 * 1024 * 1024)
-        ).toFixed(1) + " GB";
+            size / 1024
+        ).toFixed(1) + " KB";
     }
 
+    if (size < 1024 * 1024 * 1024) {
+        return (
+            size / (1024 * 1024)
+        ).toFixed(1) + " MB";
+    }
 
-    async function newChat() {
+    return (
+        size / (1024 * 1024 * 1024)
+    ).toFixed(1) + " GB";
+}
 
-        try {
 
-            const response = await fetch(
+async function newChat() {
+
+    try {
+
+        const response =
+            await fetch(
                 "/api/conversations",
                 {
                     method: "POST"
                 }
             );
 
-            if (!response.ok) {
-                throw new Error(
-                    "Could not create conversation"
+        if (!response.ok) {
+            throw new Error(
+                "Could not create conversation"
+            );
+        }
+
+        const data =
+            await response.json();
+
+        currentConversationId =
+            data.id;
+
+        clearMessages();
+
+        await clearAttachments();
+
+        await loadConversations();
+
+        closeSidebarMobile();
+
+        document
+            .getElementById("message")
+            .focus();
+
+    } catch (error) {
+
+        console.error(error);
+    }
+}
+
+
+async function sendMessage() {
+
+    if (sending) {
+        return;
+    }
+
+    const input =
+        document.getElementById("message");
+
+    const text =
+        input.value.trim();
+
+    if (
+        !text &&
+        attachments.length === 0
+    ) {
+        return;
+    }
+
+    const unfinished =
+        attachments.some(
+            attachment =>
+                attachment.uploading
+        );
+
+    if (unfinished) {
+        showUploadError(
+            "Wait until the files finish uploading."
+        );
+        return;
+    }
+
+    sending = true;
+
+    const sendButton =
+        document.getElementById(
+            "sendButton"
+        );
+
+    const attachButton =
+        document.getElementById(
+            "attachButton"
+        );
+
+    sendButton.disabled = true;
+    attachButton.disabled = true;
+
+    const welcome =
+        document.getElementById("welcome");
+
+    if (welcome) {
+        welcome.remove();
+    }
+
+    const sentAttachments =
+        attachments.map(
+            attachment => ({
+                ...attachment
+            })
+        );
+
+    addMessage(
+        text || "Attached files",
+        "user",
+        sentAttachments
+    );
+
+    input.value = "";
+
+    autoResize();
+
+    try {
+
+        let response;
+
+        if (sentAttachments.length > 0) {
+
+            const formData =
+                new FormData();
+
+            formData.append(
+                "message",
+                text
+            );
+
+            formData.append(
+                "mode",
+                currentMode
+            );
+
+            if (currentConversationId) {
+
+                formData.append(
+                    "conversationId",
+                    currentConversationId
                 );
             }
 
-            const data =
-                await response.json();
-
-            currentConversationId =
-                data.id;
-
-            clearMessages();
-
-            await clearAttachments();
-
-            await loadConversations();
-
-            closeSidebarMobile();
-
-            document
-                .getElementById("message")
-                .focus();
-
-        } catch (error) {
-
-            console.error(error);
-        }
-    }
-
-
-    async function sendMessage() {
-
-        if (sending) {
-            return;
-        }
-
-        const input =
-            document.getElementById("message");
-
-        const text =
-            input.value.trim();
-
-        if (!text && attachments.length === 0) {
-            return;
-        }
-
-        sending = true;
-
-        const sendButton =
-            document.getElementById("sendButton");
-
-        const attachButton =
-            document.getElementById("attachButton");
-
-        sendButton.disabled = true;
-        attachButton.disabled = true;
-
-        const welcome =
-            document.getElementById("welcome");
-
-        if (welcome) {
-            welcome.remove();
-        }
-
-        const sentAttachments =
-            attachments.map(
-                attachment => ({
-                    ...attachment
-                })
+            formData.append(
+                "attachmentIds",
+                sentAttachments
+                    .map(
+                        attachment =>
+                            attachment.id
+                    )
+                    .join(",")
             );
 
-        addMessage(
-            text || "Attached files",
-            "user",
-            sentAttachments
-        );
-
-        input.value = "";
-
-        autoResize();
-
-        try {
-
-            let response;
-
-            if (sentAttachments.length > 0) {
-
-                const formData =
-                    new FormData();
-
-                formData.append(
-                    "message",
-                    text
-                );
-
-                formData.append(
-                    "mode",
-                    currentMode
-                );
-
-                if (currentConversationId) {
-
-                    formData.append(
-                        "conversationId",
-                        currentConversationId
-                    );
-                }
-
-                formData.append(
-                    "attachmentIds",
-                    sentAttachments
-                        .map(
-                            attachment =>
-                                attachment.id
-                        )
-                        .join(",")
-                );
-
-                response = await fetch(
+            response =
+                await fetch(
                     "/api/chat/with-attachments",
                     {
                         method: "POST",
@@ -1768,9 +1941,10 @@
                     }
                 );
 
-            } else {
+        } else {
 
-                response = await fetch(
+            response =
+                await fetch(
                     "/api/chat",
                     {
                         method: "POST",
@@ -1778,1058 +1952,1224 @@
                             "Content-Type":
                                 "application/json"
                         },
-                        body: JSON.stringify({
-                            message: text,
-                            mode: currentMode,
-                            conversationId:
-                                currentConversationId
-                        })
+                        body:
+                            JSON.stringify({
+                                message: text,
+                                mode: currentMode,
+                                conversationId:
+                                    currentConversationId
+                            })
                     }
                 );
-            }
-
-            if (!response.ok) {
-                throw new Error(
-                    "Request failed"
-                );
-            }
-
-            const result =
-                await response.json();
-
-            if (result.conversationId) {
-
-                currentConversationId =
-                    result.conversationId;
-            }
-
-            addMessage(
-                result.message
-                    || result.response
-                    || "No response was generated.",
-                "assistant"
-            );
-
-            await clearAttachments();
-
-            await loadConversations();
-
-        } catch (error) {
-
-            console.error(error);
-
-            addMessage(
-                "Connection error.",
-                "assistant"
-            );
-
-        } finally {
-
-            sending = false;
-
-            sendButton.disabled = false;
-            attachButton.disabled = false;
-
-            input.focus();
-        }
-    }
-
-
-    function addMessage(
-        text,
-        type,
-        messageAttachments = []
-    ) {
-
-        const container =
-            document.getElementById("messages");
-
-        const message =
-            document.createElement("div");
-
-        message.className =
-            "message " + type;
-
-        const role =
-            document.createElement("div");
-
-        role.className =
-            "message-role";
-
-        role.textContent =
-            type === "user"
-                ? "You"
-                : "Blackwater";
-
-        const content =
-            document.createElement("div");
-
-        content.className =
-            "message-content";
-
-        content.textContent =
-            text;
-
-        message.appendChild(role);
-        message.appendChild(content);
-
-        if (messageAttachments.length) {
-
-            const attachmentContainer =
-                document.createElement("div");
-
-            attachmentContainer.className =
-                "message-attachments";
-
-            messageAttachments.forEach(
-                attachment => {
-
-                    const item =
-                        document.createElement("div");
-
-                    item.className =
-                        "message-attachment";
-
-                    if (
-                        attachment.type === "image"
-                    ) {
-
-                        const image =
-                            document.createElement("img");
-
-                        image.src =
-                            attachment.url;
-
-                        image.alt =
-                            attachment.name;
-
-                        item.appendChild(image);
-                    }
-
-                    const name =
-                        document.createElement("span");
-
-                    name.textContent =
-                        attachment.name;
-
-                    item.appendChild(name);
-
-                    attachmentContainer.appendChild(item);
-                }
-            );
-
-            message.appendChild(
-                attachmentContainer
-            );
         }
 
-        container.appendChild(message);
+        if (!response.ok) {
 
-        container.scrollTop =
-            container.scrollHeight;
-    }
-
-
-    async function clearAttachments() {
-
-        const current =
-            attachments.slice();
-
-        attachments = [];
-
-        renderAttachments();
-
-        for (const attachment of current) {
+            let errorText =
+                "Request failed.";
 
             try {
 
-                await fetch(
-                    "/api/attachments/"
-                    + encodeURIComponent(
-                        attachment.id
-                    ),
-                    {
-                        method: "DELETE"
-                    }
-                );
+                const errorData =
+                    await response.json();
 
-            } catch (error) {
+                errorText =
+                    errorData.error ||
+                    errorData.message ||
+                    errorText;
 
-                console.error(error);
-            }
+            } catch {}
+
+            throw new Error(errorText);
         }
-    }
 
+        const result =
+            await response.json();
 
-    function clearMessages() {
-
-        document
-            .getElementById("messages")
-            .innerHTML = `
-                <div
-                    class="welcome"
-                    id="welcome"
-                >
-                    <div>
-
-                        <img
-                            class="welcome-logo"
-                            src="/images/blackwater-logo.png"
-                            alt="Blackwater"
-                        >
-
-                        <h1>Blackwater</h1>
-
-                        <p>
-                            How can I help you today?
-                        </p>
-
-                    </div>
-                </div>
-            `;
-    }
-
-
-    async function loadConversations() {
-
-        try {
-
-            const response =
-                await fetch(
-                    "/api/conversations"
-                );
-
-            if (!response.ok) {
-                throw new Error(
-                    "Could not load conversations"
-                );
-            }
-
-            const conversations =
-                await response.json();
-
-            const container =
-                document.getElementById(
-                    "conversations"
-                );
-
-            container.innerHTML = "";
-
-            conversations
-                .slice()
-                .reverse()
-                .forEach(id => {
-
-                    const item =
-                        document.createElement("div");
-
-                    item.className =
-                        "conversation";
-
-                    item.textContent =
-                        "Conversation " + id;
-
-                    if (
-                        id ===
-                        currentConversationId
-                    ) {
-                        item.classList.add("active");
-                    }
-
-                    item.onclick = () =>
-                        openConversation(id);
-
-                    container.appendChild(item);
-                });
-
-        } catch (error) {
-
-            console.error(error);
-        }
-    }
-
-
-    async function openConversation(id) {
-
-        try {
-
-            const response =
-                await fetch(
-                    "/api/conversations/"
-                    + encodeURIComponent(id)
-                );
-
-            if (!response.ok) {
-                throw new Error(
-                    "Could not load conversation"
-                );
-            }
-
-            const messages =
-                await response.json();
+        if (result.conversationId) {
 
             currentConversationId =
-                id;
+                result.conversationId;
+        }
 
-            const container =
-                document.getElementById(
-                    "messages"
-                );
+        addMessage(
+            result.message ||
+            result.response ||
+            "No response was generated.",
+            "assistant"
+        );
 
-            container.innerHTML = "";
+        await clearAttachments();
 
-            messages.forEach(line => {
+        await loadConversations();
 
-                const separator =
-                    line.indexOf(": ");
+    } catch (error) {
 
-                if (separator === -1) {
+        console.error(error);
 
-                    addMessage(
-                        line,
-                        "assistant"
-                    );
+        addMessage(
+            error.message ||
+            "Connection error.",
+            "assistant"
+        );
 
-                    return;
+    } finally {
+
+        sending = false;
+
+        sendButton.disabled = false;
+        attachButton.disabled = false;
+
+        input.focus();
+    }
+}
+
+
+function addMessage(
+    text,
+    type,
+    messageAttachments = []
+) {
+
+    const container =
+        document.getElementById(
+            "messages"
+        );
+
+    const message =
+        document.createElement("div");
+
+    message.className =
+        "message " + type;
+
+    const role =
+        document.createElement("div");
+
+    role.className =
+        "message-role";
+
+    role.textContent =
+        type === "user"
+            ? "You"
+            : "Blackwater";
+
+    const content =
+        document.createElement("div");
+
+    content.className =
+        "message-content";
+
+    content.textContent =
+        text;
+
+    message.appendChild(role);
+    message.appendChild(content);
+
+    if (messageAttachments.length) {
+
+        const attachmentContainer =
+            document.createElement("div");
+
+        attachmentContainer.className =
+            "message-attachments";
+
+        messageAttachments.forEach(
+            attachment => {
+
+                const item =
+                    document.createElement("div");
+
+                item.className =
+                    "message-attachment";
+
+                item.title =
+                    "Open attachment";
+
+                item.onclick =
+                    () => {
+
+                        if (attachment.url) {
+                            window.open(
+                                attachment.url,
+                                "_blank",
+                                "noopener"
+                            );
+                        }
+                    };
+
+                if (
+                    attachment.type === "image"
+                ) {
+
+                    const image =
+                        document.createElement("img");
+
+                    image.src =
+                        attachment.url;
+
+                    image.alt =
+                        attachment.name;
+
+                    item.appendChild(image);
                 }
 
-                const roleStart =
-                    line.indexOf("] ");
+                const name =
+                    document.createElement("span");
 
-                if (roleStart === -1) {
+                name.textContent =
+                    attachment.name;
 
-                    addMessage(
-                        line.substring(
-                            separator + 2
-                        ),
-                        "assistant"
-                    );
+                item.appendChild(name);
 
-                    return;
+                attachmentContainer.appendChild(
+                    item
+                );
+            }
+        );
+
+        message.appendChild(
+            attachmentContainer
+        );
+    }
+
+    container.appendChild(message);
+
+    container.scrollTop =
+        container.scrollHeight;
+}
+
+
+async function clearAttachments() {
+
+    const current =
+        attachments.slice();
+
+    attachments = [];
+
+    renderAttachments();
+
+    for (const attachment of current) {
+
+        if (
+            attachment.url &&
+            attachment.url.startsWith("blob:")
+        ) {
+            URL.revokeObjectURL(
+                attachment.url
+            );
+        }
+
+        if (
+            attachment.uploading ||
+            !attachment.id
+        ) {
+            continue;
+        }
+
+        try {
+
+            await fetch(
+                "/api/attachments/"
+                + encodeURIComponent(
+                    attachment.id
+                ),
+                {
+                    method: "DELETE"
+                }
+            );
+
+        } catch (error) {
+
+            console.error(error);
+        }
+    }
+}
+
+
+function clearMessages() {
+
+    document
+        .getElementById("messages")
+        .innerHTML = `
+            <div class="welcome" id="welcome">
+                <div>
+                    <img
+                        class="welcome-logo"
+                        src="/images/blackwater-logo.png"
+                        alt="Blackwater"
+                    >
+                    <h1>Blackwater</h1>
+                    <p>How can I help you today?</p>
+                </div>
+            </div>
+        `;
+}
+
+
+async function loadConversations() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/conversations"
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                "Could not load conversations"
+            );
+        }
+
+        const conversations =
+            await response.json();
+
+        const container =
+            document.getElementById(
+                "conversations"
+            );
+
+        container.innerHTML = "";
+
+        conversations
+            .slice()
+            .reverse()
+            .forEach(id => {
+
+                const item =
+                    document.createElement("div");
+
+                item.className =
+                    "conversation";
+
+                item.textContent =
+                    "Conversation " + id;
+
+                if (
+                    id ===
+                    currentConversationId
+                ) {
+                    item.classList.add("active");
                 }
 
-                const role =
-                    line.substring(
-                        roleStart + 2,
-                        separator
-                    );
+                item.onclick =
+                    () => openConversation(id);
 
-                const text =
-                    line.substring(
-                        separator + 2
-                    );
-
-                addMessage(
-                    text,
-                    role === "user"
-                        ? "user"
-                        : "assistant"
-                );
+                container.appendChild(item);
             });
 
-            await clearAttachments();
+    } catch (error) {
 
-            await loadConversations();
-
-            closeSidebarMobile();
-
-        } catch (error) {
-
-            console.error(error);
-        }
+        console.error(error);
     }
+}
 
 
-    async function clearMemory() {
+async function openConversation(id) {
 
-        try {
+    try {
 
-            const response =
-                await fetch(
-                    "/api/memory",
-                    {
-                        method: "DELETE"
-                    }
-                );
-
-            if (response.ok) {
-                alert("Memory cleared.");
-            } else {
-                alert("Could not clear memory.");
-            }
-
-        } catch (error) {
-
-            alert("Could not clear memory.");
-        }
-    }
-
-
-    async function clearConversations() {
-
-        const confirmed =
-            confirm(
-                "Delete all saved conversations?"
+        const response =
+            await fetch(
+                "/api/conversations/"
+                + encodeURIComponent(id)
             );
 
-        if (!confirmed) {
-            return;
-        }
-
-        try {
-
-            const conversationsResponse =
-                await fetch(
-                    "/api/conversations"
-                );
-
-            const conversations =
-                await conversationsResponse.json();
-
-            for (const id of conversations) {
-
-                await fetch(
-                    "/api/conversations/"
-                    + encodeURIComponent(id),
-                    {
-                        method: "DELETE"
-                    }
-                );
-            }
-
-            currentConversationId = null;
-
-            clearMessages();
-
-            await clearAttachments();
-
-            await loadConversations();
-
-        } catch (error) {
-
-            alert(
-                "Could not delete conversations."
+        if (!response.ok) {
+            throw new Error(
+                "Could not load conversation"
             );
         }
+
+        const messages =
+            await response.json();
+
+        currentConversationId =
+            id;
+
+        const container =
+            document.getElementById(
+                "messages"
+            );
+
+        container.innerHTML = "";
+
+        messages.forEach(line => {
+
+            const separator =
+                line.indexOf(": ");
+
+            if (separator === -1) {
+
+                addMessage(
+                    line,
+                    "assistant"
+                );
+
+                return;
+            }
+
+            const roleStart =
+                line.indexOf("] ");
+
+            if (roleStart === -1) {
+
+                addMessage(
+                    line.substring(
+                        separator + 2
+                    ),
+                    "assistant"
+                );
+
+                return;
+            }
+
+            const role =
+                line.substring(
+                    roleStart + 2,
+                    separator
+                );
+
+            const text =
+                line.substring(
+                    separator + 2
+                );
+
+            addMessage(
+                text,
+                role === "user"
+                    ? "user"
+                    : "assistant"
+            );
+        });
+
+        await clearAttachments();
+
+        await loadConversations();
+
+        closeSidebarMobile();
+
+    } catch (error) {
+
+        console.error(error);
+    }
+}
+
+
+async function clearMemory() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/memory",
+                {
+                    method: "DELETE"
+                }
+            );
+
+        alert(
+            response.ok
+                ? "Memory cleared."
+                : "Could not clear memory."
+        );
+
+    } catch {
+
+        alert(
+            "Could not clear memory."
+        );
+    }
+}
+
+
+async function clearConversations() {
+
+    if (
+        !confirm(
+            "Delete all saved conversations?"
+        )
+    ) {
+        return;
     }
 
+    try {
 
-    function openSettings() {
+        const response =
+            await fetch(
+                "/api/conversations"
+            );
+
+        const conversations =
+            await response.json();
+
+        for (const id of conversations) {
+
+            await fetch(
+                "/api/conversations/"
+                + encodeURIComponent(id),
+                {
+                    method: "DELETE"
+                }
+            );
+        }
+
+        currentConversationId = null;
+
+        clearMessages();
+
+        await clearAttachments();
+
+        await loadConversations();
+
+    } catch {
+
+        alert(
+            "Could not delete conversations."
+        );
+    }
+}
+
+
+function openSettings() {
+
+    document
+        .getElementById("settingsOverlay")
+        .classList.add("open");
+
+    loadEvolution();
+}
+
+
+function closeSettings(event) {
+
+    const overlay =
+        document.getElementById(
+            "settingsOverlay"
+        );
+
+    if (
+        event &&
+        event.target !== overlay
+    ) {
+        return;
+    }
+
+    overlay.classList.remove("open");
+}
+
+
+function handleKey(event) {
+
+    if (
+        event.key === "Enter" &&
+        !event.shiftKey
+    ) {
+
+        event.preventDefault();
+
+        sendMessage();
+    }
+}
+
+
+function autoResize() {
+
+    const input =
+        document.getElementById(
+            "message"
+        );
+
+    input.style.height = "auto";
+
+    input.style.height =
+        Math.min(
+            input.scrollHeight,
+            180
+        ) + "px";
+}
+
+
+async function loadEvolution() {
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/evolution"
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                "Could not load evolution"
+            );
+        }
+
+        evolutionState =
+            await response.json();
+
+        renderEvolution();
+
+    } catch (error) {
+
+        console.error(error);
 
         document
-            .getElementById("settingsOverlay")
-            .classList.add("open");
+            .getElementById(
+                "evolutionStatusText"
+            )
+            .textContent =
+            "Evolution state unavailable.";
+    }
+}
 
-        loadEvolution();
+
+function renderEvolution() {
+
+    if (!evolutionState) {
+        return;
     }
 
+    const running =
+        Boolean(
+            evolutionState.running
+        );
 
-    function closeSettings(event) {
+    const powers =
+        evolutionState.powers || {};
 
-        const overlay =
-            document.getElementById(
-                "settingsOverlay"
+    const priorities =
+        evolutionState.priorities || {};
+
+    const enabled =
+        evolutionState.enabledDomains || {};
+
+    const cycles =
+        evolutionState.cycles || {};
+
+    const totalPower =
+        Object.values(powers)
+            .reduce(
+                (sum, value) =>
+                    sum + Number(value || 0),
+                0
             );
 
-        if (
-            event &&
-            event.target !== overlay
-        ) {
-            return;
-        }
+    document
+        .getElementById("totalPower")
+        .textContent =
+        formatNumber(totalPower);
 
-        overlay.classList.remove("open");
-    }
-
-
-    function handleKey(event) {
-
-        if (
-            event.key === "Enter" &&
-            !event.shiftKey
-        ) {
-
-            event.preventDefault();
-
-            sendMessage();
-        }
-    }
-
-
-    function autoResize() {
-
-        const input =
-            document.getElementById("message");
-
-        input.style.height = "auto";
-
-        input.style.height =
-            Math.min(
-                input.scrollHeight,
-                180
-            ) + "px";
-    }
-
-
-    async function loadEvolution() {
-
-        try {
-
-            const response =
-                await fetch(
-                    "/api/evolution"
-                );
-
-            if (!response.ok) {
-                throw new Error(
-                    "Could not load evolution"
-                );
-            }
-
-            evolutionState =
-                await response.json();
-
-            renderEvolution();
-
-        } catch (error) {
-
-            console.error(error);
-
-            document
-                .getElementById(
-                    "evolutionStatusText"
-                )
-                .textContent =
-                "Evolution state unavailable.";
-        }
-    }
-
-
-    function renderEvolution() {
-
-        if (!evolutionState) {
-            return;
-        }
-
-        const running =
-            Boolean(
-                evolutionState.running
-            );
-
-        const powers =
-            evolutionState.powers || {};
-
-        const priorities =
-            evolutionState.priorities || {};
-
-        const enabled =
-            evolutionState.enabledDomains
-            || {};
-
-        const cycles =
-            evolutionState.cycles || {};
-
-        const totalPower =
-            Object.values(powers)
+    document
+        .getElementById("evolutionCycles")
+        .textContent =
+        formatNumber(
+            evolutionState.totalCycles ||
+            Object.values(cycles)
                 .reduce(
                     (sum, value) =>
                         sum + Number(value || 0),
                     0
-                );
+                )
+        );
 
-        document
-            .getElementById("totalPower")
-            .textContent =
-            formatNumber(totalPower);
+    document
+        .getElementById(
+            "evolutionStatusTitle"
+        )
+        .textContent =
+        running
+            ? "Evolution running"
+            : "Evolution paused";
 
-        document
-            .getElementById("evolutionCycles")
-            .textContent =
-            formatNumber(
-                evolutionState.totalCycles
-                || Object.values(cycles)
-                    .reduce(
-                        (sum, value) =>
-                            sum + Number(value || 0),
-                        0
-                    )
-            );
+    document
+        .getElementById(
+            "evolutionStatusText"
+        )
+        .textContent =
+        running
+            ? "Blackwater can continue improving automatically."
+            : "Automatic improvement is currently paused.";
 
-        const title =
-            document.getElementById(
-                "evolutionStatusTitle"
-            );
-
-        const statusText =
-            document.getElementById(
-                "evolutionStatusText"
-            );
-
-        const dot =
-            document.getElementById(
-                "evolutionDot"
-            );
-
-        title.textContent =
-            running
-                ? "Evolution running"
-                : "Evolution paused";
-
-        statusText.textContent =
-            running
-                ? "Blackwater can continue improving automatically."
-                : "Automatic improvement is currently paused.";
-
-        dot.classList.toggle(
+    document
+        .getElementById("evolutionDot")
+        .classList.toggle(
             "running",
             running
         );
 
-        const domainList =
-            document.getElementById(
-                "domainList"
-            );
-
-        domainList.innerHTML = "";
-
-        const domainNames = [
-            "CODING",
-            "REASONING",
-            "RESEARCH",
-            "KNOWLEDGE",
-            "MEMORY"
-        ];
-
-        domainNames.forEach(domain => {
-
-            const power =
-                Number(
-                    powers[domain] || 0
-                );
-
-            const priority =
-                Number(
-                    priorities[domain] || 0
-                );
-
-            const isEnabled =
-                enabled[domain] !== false;
-
-            const cycleCount =
-                Number(
-                    cycles[domain] || 0
-                );
-
-            const card =
-                document.createElement("div");
-
-            card.className =
-                "domain-card";
-
-            const header =
-                document.createElement("div");
-
-            header.className =
-                "domain-header";
-
-            const name =
-                document.createElement("div");
-
-            name.className =
-                "domain-name";
-
-            name.textContent =
-                formatDomainName(domain);
-
-            const powerElement =
-                document.createElement("div");
-
-            powerElement.className =
-                "domain-power";
-
-            powerElement.textContent =
-                formatNumber(power);
-
-            header.appendChild(name);
-            header.appendChild(powerElement);
-
-            const meta =
-                document.createElement("div");
-
-            meta.className =
-                "domain-meta";
-
-            const cyclesText =
-                document.createElement("span");
-
-            cyclesText.textContent =
-                "Cycles: "
-                + formatNumber(cycleCount);
-
-            const actions =
-                document.createElement("div");
-
-            actions.className =
-                "domain-actions";
-
-            const priorityInput =
-                document.createElement("input");
-
-            priorityInput.className =
-                "domain-priority";
-
-            priorityInput.type =
-                "number";
-
-            priorityInput.min =
-                "0";
-
-            priorityInput.max =
-                "1000";
-
-            priorityInput.value =
-                priority;
-
-            priorityInput.title =
-                "Priority";
-
-            priorityInput.onchange =
-                () =>
-                    updateEvolutionPriority(
-                        domain,
-                        priorityInput.value
-                    );
-
-            const toggle =
-                document.createElement("button");
-
-            toggle.className =
-                "domain-toggle"
-                + (isEnabled
-                    ? " enabled"
-                    : "");
-
-            toggle.textContent =
-                isEnabled
-                    ? "Enabled"
-                    : "Disabled";
-
-            toggle.onclick =
-                () =>
-                    updateEvolutionDomain(
-                        domain,
-                        !isEnabled
-                    );
-
-            actions.appendChild(
-                priorityInput
-            );
-
-            actions.appendChild(
-                toggle
-            );
-
-            meta.appendChild(
-                cyclesText
-            );
-
-            meta.appendChild(
-                actions
-            );
-
-            card.appendChild(header);
-            card.appendChild(meta);
-
-            domainList.appendChild(card);
-        });
-    }
-
-
-    function formatDomainName(domain) {
-
-        return domain
-            .toLowerCase()
-            .replace(
-                /^./,
-                character =>
-                    character.toUpperCase()
-            );
-    }
-
-
-    function formatNumber(value) {
-
-        const number =
-            Number(value || 0);
-
-        if (!Number.isFinite(number)) {
-            return "0";
-        }
-
-        return Math.round(number)
-            .toLocaleString();
-    }
-
-
-    async function startEvolution() {
-
-        await evolutionAction(
-            "/api/evolution/start",
-            "Evolution started."
+    const domainList =
+        document.getElementById(
+            "domainList"
         );
-    }
 
+    domainList.innerHTML = "";
 
-    async function pauseEvolution() {
+    [
+        "CODING",
+        "REASONING",
+        "RESEARCH",
+        "KNOWLEDGE",
+        "MEMORY"
+    ].forEach(domain => {
 
-        await evolutionAction(
-            "/api/evolution/pause",
-            "Evolution paused."
-        );
-    }
-
-
-    async function runEvolutionCycle() {
-
-        await evolutionAction(
-            "/api/evolution/cycle",
-            "Evolution cycle completed."
-        );
-    }
-
-
-    async function evolutionAction(
-        endpoint,
-        successMessage
-    ) {
-
-        const message =
-            document.getElementById(
-                "evolutionMessage"
+        const power =
+            Number(
+                powers[domain] || 0
             );
-
-        message.textContent =
-            "Updating evolution...";
-
-        try {
-
-            const response =
-                await fetch(
-                    endpoint,
-                    {
-                        method: "POST"
-                    }
-                );
-
-            if (!response.ok) {
-                throw new Error(
-                    "Evolution request failed"
-                );
-            }
-
-            message.textContent =
-                successMessage;
-
-            await loadEvolution();
-
-        } catch (error) {
-
-            console.error(error);
-
-            message.textContent =
-                "Could not update evolution.";
-        }
-    }
-
-
-    async function updateEvolutionDomain(
-        domain,
-        value
-    ) {
-
-        const message =
-            document.getElementById(
-                "evolutionMessage"
-            );
-
-        message.textContent =
-            "Updating "
-            + formatDomainName(domain)
-            + "...";
-
-        try {
-
-            const response =
-                await fetch(
-                    "/api/evolution/domain"
-                    + "?name="
-                    + encodeURIComponent(domain)
-                    + "&enabled="
-                    + encodeURIComponent(value),
-                    {
-                        method: "POST"
-                    }
-                );
-
-            if (!response.ok) {
-                throw new Error(
-                    "Could not update domain"
-                );
-            }
-
-            await loadEvolution();
-
-            message.textContent =
-                formatDomainName(domain)
-                + " updated.";
-
-        } catch (error) {
-
-            console.error(error);
-
-            message.textContent =
-                "Could not update domain.";
-        }
-    }
-
-
-    async function updateEvolutionPriority(
-        domain,
-        value
-    ) {
 
         const priority =
-            Number(value);
+            Number(
+                priorities[domain] || 0
+            );
 
-        if (
-            !Number.isFinite(priority)
-            || priority < 0
-        ) {
-            await loadEvolution();
+        const isEnabled =
+            enabled[domain] !== false;
+
+        const cycleCount =
+            Number(
+                cycles[domain] || 0
+            );
+
+        const card =
+            document.createElement("div");
+
+        card.className =
+            "domain-card";
+
+        const header =
+            document.createElement("div");
+
+        header.className =
+            "domain-header";
+
+        const name =
+            document.createElement("div");
+
+        name.className =
+            "domain-name";
+
+        name.textContent =
+            formatDomainName(domain);
+
+        const powerElement =
+            document.createElement("div");
+
+        powerElement.className =
+            "domain-power";
+
+        powerElement.textContent =
+            formatNumber(power);
+
+        header.appendChild(name);
+        header.appendChild(powerElement);
+
+        const meta =
+            document.createElement("div");
+
+        meta.className =
+            "domain-meta";
+
+        const cyclesText =
+            document.createElement("span");
+
+        cyclesText.textContent =
+            "Cycles: " +
+            formatNumber(cycleCount);
+
+        const actions =
+            document.createElement("div");
+
+        actions.className =
+            "domain-actions";
+
+        const priorityInput =
+            document.createElement("input");
+
+        priorityInput.className =
+            "domain-priority";
+
+        priorityInput.type =
+            "number";
+
+        priorityInput.min = "0";
+        priorityInput.max = "1000";
+        priorityInput.value = priority;
+        priorityInput.title = "Priority";
+
+        priorityInput.onchange =
+            () =>
+                updateEvolutionPriority(
+                    domain,
+                    priorityInput.value
+                );
+
+        const toggle =
+            document.createElement("button");
+
+        toggle.className =
+            "domain-toggle" +
+            (
+                isEnabled
+                    ? " enabled"
+                    : ""
+            );
+
+        toggle.textContent =
+            isEnabled
+                ? "Enabled"
+                : "Disabled";
+
+        toggle.onclick =
+            () =>
+                updateEvolutionDomain(
+                    domain,
+                    !isEnabled
+                );
+
+        actions.appendChild(
+            priorityInput
+        );
+
+        actions.appendChild(toggle);
+
+        meta.appendChild(cyclesText);
+        meta.appendChild(actions);
+
+        card.appendChild(header);
+        card.appendChild(meta);
+
+        domainList.appendChild(card);
+    });
+}
+
+
+function formatDomainName(domain) {
+
+    return domain
+        .toLowerCase()
+        .replace(
+            /^./,
+            character =>
+                character.toUpperCase()
+        );
+}
+
+
+function formatNumber(value) {
+
+    const number =
+        Number(value || 0);
+
+    if (!Number.isFinite(number)) {
+        return "0";
+    }
+
+    return Math.round(number)
+        .toLocaleString();
+}
+
+
+async function startEvolution() {
+
+    await evolutionAction(
+        "/api/evolution/start",
+        "Evolution started."
+    );
+}
+
+
+async function pauseEvolution() {
+
+    await evolutionAction(
+        "/api/evolution/pause",
+        "Evolution paused."
+    );
+}
+
+
+async function runEvolutionCycle() {
+
+    await evolutionAction(
+        "/api/evolution/cycle",
+        "Evolution cycle completed."
+    );
+}
+
+
+async function evolutionAction(
+    endpoint,
+    successMessage
+) {
+
+    const message =
+        document.getElementById(
+            "evolutionMessage"
+        );
+
+    message.textContent =
+        "Updating evolution...";
+
+    try {
+
+        const response =
+            await fetch(
+                endpoint,
+                {
+                    method: "POST"
+                }
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                "Evolution request failed"
+            );
+        }
+
+        message.textContent =
+            successMessage;
+
+        await loadEvolution();
+
+    } catch (error) {
+
+        console.error(error);
+
+        message.textContent =
+            "Could not update evolution.";
+    }
+}
+
+
+async function updateEvolutionDomain(
+    domain,
+    value
+) {
+
+    const message =
+        document.getElementById(
+            "evolutionMessage"
+        );
+
+    message.textContent =
+        "Updating " +
+        formatDomainName(domain) +
+        "...";
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/evolution/domain"
+                + "?name="
+                + encodeURIComponent(domain)
+                + "&enabled="
+                + encodeURIComponent(value),
+                {
+                    method: "POST"
+                }
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                "Could not update domain"
+            );
+        }
+
+        await loadEvolution();
+
+        message.textContent =
+            formatDomainName(domain) +
+            " updated.";
+
+    } catch (error) {
+
+        console.error(error);
+
+        message.textContent =
+            "Could not update domain.";
+    }
+}
+
+
+async function updateEvolutionPriority(
+    domain,
+    value
+) {
+
+    const priority =
+        Number(value);
+
+    if (
+        !Number.isFinite(priority) ||
+        priority < 0
+    ) {
+        await loadEvolution();
+        return;
+    }
+
+    const message =
+        document.getElementById(
+            "evolutionMessage"
+        );
+
+    message.textContent =
+        "Updating priority...";
+
+    try {
+
+        const response =
+            await fetch(
+                "/api/evolution/priority"
+                + "?name="
+                + encodeURIComponent(domain)
+                + "&value="
+                + encodeURIComponent(priority),
+                {
+                    method: "POST"
+                }
+            );
+
+        if (!response.ok) {
+            throw new Error(
+                "Could not update priority"
+            );
+        }
+
+        await loadEvolution();
+
+        message.textContent =
+            "Priority updated.";
+
+    } catch (error) {
+
+        console.error(error);
+
+        message.textContent =
+            "Could not update priority.";
+    }
+}
+
+
+/* File picker */
+
+document
+    .getElementById("fileInput")
+    .addEventListener(
+        "change",
+        handleFiles
+    );
+
+
+/* Textarea */
+
+document
+    .getElementById("message")
+    .addEventListener(
+        "input",
+        autoResize
+    );
+
+document
+    .getElementById("message")
+    .addEventListener(
+        "keydown",
+        handleKey
+    );
+
+
+/* Drag & Drop */
+
+const inputBox =
+    document.getElementById(
+        "inputBox"
+    );
+
+[
+    "dragenter",
+    "dragover"
+].forEach(eventName => {
+
+    inputBox.addEventListener(
+        eventName,
+        event => {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            if (!sending) {
+                inputBox.classList.add(
+                    "dragover"
+                );
+            }
+        }
+    );
+});
+
+
+[
+    "dragleave",
+    "drop"
+].forEach(eventName => {
+
+    inputBox.addEventListener(
+        eventName,
+        event => {
+
+            event.preventDefault();
+            event.stopPropagation();
+
+            inputBox.classList.remove(
+                "dragover"
+            );
+        }
+    );
+});
+
+
+inputBox.addEventListener(
+    "drop",
+    async event => {
+
+        if (sending) {
             return;
         }
 
-        const message =
-            document.getElementById(
-                "evolutionMessage"
+        const files =
+            Array.from(
+                event.dataTransfer.files || []
             );
 
-        message.textContent =
-            "Updating priority...";
+        await processFiles(files);
+    }
+);
 
-        try {
 
-            const response =
-                await fetch(
-                    "/api/evolution/priority"
-                    + "?name="
-                    + encodeURIComponent(domain)
-                    + "&value="
-                    + encodeURIComponent(priority),
-                    {
-                        method: "POST"
-                    }
-                );
+/* Paste images */
 
-            if (!response.ok) {
-                throw new Error(
-                    "Could not update priority"
-                );
+document
+    .getElementById("message")
+    .addEventListener(
+        "paste",
+        async event => {
+
+            if (sending) {
+                return;
             }
 
-            await loadEvolution();
+            const items =
+                Array.from(
+                    event.clipboardData?.items || []
+                );
 
-            message.textContent =
-                "Priority updated.";
+            const imageFiles = [];
 
-        } catch (error) {
+            for (const item of items) {
 
-            console.error(error);
+                if (
+                    item.kind === "file" &&
+                    item.type.startsWith("image/")
+                ) {
 
-            message.textContent =
-                "Could not update priority.";
-        }
-    }
+                    const file =
+                        item.getAsFile();
 
+                    if (file) {
+                        imageFiles.push(file);
+                    }
+                }
+            }
 
-    document.addEventListener(
-        "keydown",
-        event => {
-
-            if (event.key === "Escape") {
-                closeSettings();
-                closeSidebarMobile();
+            if (imageFiles.length) {
+                await processFiles(imageFiles);
             }
         }
     );
 
 
-    document
-        .getElementById("language")
-        .value =
-        localStorage.getItem(
-            "blackwater-language"
-        ) || "auto";
+/* Keyboard */
+
+document.addEventListener(
+    "keydown",
+    event => {
+
+        if (event.key === "Escape") {
+
+            closeSettings();
+            closeSidebarMobile();
+        }
+    }
+);
 
 
-    document
-        .getElementById("dialect")
-        .value =
-        localStorage.getItem(
-            "blackwater-dialect"
-        ) || "auto";
+/* Settings */
+
+document
+    .getElementById("language")
+    .value =
+    localStorage.getItem(
+        "blackwater-language"
+    ) || "auto";
 
 
-    document
-        .getElementById("defaultMode")
-        .value =
-        currentMode;
+document
+    .getElementById("dialect")
+    .value =
+    localStorage.getItem(
+        "blackwater-dialect"
+    ) || "auto";
 
 
-    document
-        .getElementById("language")
-        .addEventListener(
-            "change",
-            event => {
-
-                localStorage.setItem(
-                    "blackwater-language",
-                    event.target.value
-                );
-            }
-        );
+document
+    .getElementById("defaultMode")
+    .value =
+    currentMode;
 
 
-    document
-        .getElementById("dialect")
-        .addEventListener(
-            "change",
-            event => {
+document
+    .getElementById("language")
+    .addEventListener(
+        "change",
+        event => {
 
-                localStorage.setItem(
-                    "blackwater-dialect",
-                    event.target.value
-                );
-            }
-        );
-
-
-    document
-        .getElementById("defaultMode")
-        .addEventListener(
-            "change",
-            event => {
-
-                selectMode(
-                    event.target.value
-                );
-            }
-        );
+            localStorage.setItem(
+                "blackwater-language",
+                event.target.value
+            );
+        }
+    );
 
 
-    selectMode(currentMode);
+document
+    .getElementById("dialect")
+    .addEventListener(
+        "change",
+        event => {
 
-    loadConversations();
+            localStorage.setItem(
+                "blackwater-dialect",
+                event.target.value
+            );
+        }
+    );
+
+
+document
+    .getElementById("defaultMode")
+    .addEventListener(
+        "change",
+        event => {
+
+            selectMode(
+                event.target.value
+            );
+        }
+    );
+
+
+selectMode(currentMode);
+
+loadConversations();
 
 </script>
 
