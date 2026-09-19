@@ -1,10 +1,10 @@
 package service;
 
+import org.apache.tika.Tika;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -30,6 +30,8 @@ public class AttachmentService {
 
     private static final long MAX_TEXT_SIZE =
             2L * 1024L * 1024L;
+
+    private static final Tika TIKA = new Tika();
 
     private static final List<String> ALLOWED_EXTENSIONS =
             List.of(
@@ -67,6 +69,24 @@ public class AttachmentService {
                     "gif",
                     "bmp",
                     "svg"
+            );
+
+    private static final List<String> IMAGE_EXTENSIONS =
+            List.of(
+                    "png",
+                    "jpg",
+                    "jpeg",
+                    "webp",
+                    "gif",
+                    "bmp",
+                    "svg"
+            );
+
+    private static final List<String> DOCUMENT_EXTENSIONS =
+            List.of(
+                    "pdf",
+                    "doc",
+                    "docx"
             );
 
     public AttachmentService() {
@@ -147,7 +167,7 @@ public class AttachmentService {
                     extension,
                     detectType(extension),
                     file.getSize(),
-                    file.getContentType(),
+                    detectContentType(file, target),
                     Instant.now()
             );
 
@@ -232,12 +252,26 @@ public class AttachmentService {
                 );
             }
 
+            String extension =
+                    getExtension(
+                            file.getFileName()
+                                    .toString()
+                    );
+
+            if (DOCUMENT_EXTENSIONS.contains(extension)) {
+                return extractDocumentText(file, size);
+            }
+
             return Files.readString(
                     file,
                     StandardCharsets.UTF_8
             );
 
-        } catch (IOException exception) {
+        } catch (IllegalArgumentException exception) {
+
+            throw exception;
+
+        } catch (Exception exception) {
 
             throw new IllegalStateException(
                     "Could not read text attachment.",
@@ -270,6 +304,15 @@ public class AttachmentService {
 
         return info != null
                 && "image".equals(info.type());
+    }
+
+    public boolean isDocument(String id) {
+
+        AttachmentInfo info =
+                get(id);
+
+        return info != null
+                && "document".equals(info.type());
     }
 
     public boolean exists(String id) {
@@ -348,6 +391,65 @@ public class AttachmentService {
 
     public Path getStoragePath() {
         return STORAGE;
+    }
+
+    private String extractDocumentText(
+            Path file,
+            long size
+    ) {
+
+        if (size > MAX_TEXT_SIZE) {
+            throw new IllegalArgumentException(
+                    "Document exceeds the 2 MB processing limit."
+            );
+        }
+
+        try {
+
+            return TIKA.parseToString(
+                    file.toFile()
+            );
+
+        } catch (Exception exception) {
+
+            throw new IllegalStateException(
+                    "Could not extract document text.",
+                    exception
+            );
+        }
+    }
+
+    private String detectContentType(
+            MultipartFile file,
+            Path storedFile
+    ) {
+
+        try {
+
+            String detected =
+                    TIKA.detect(
+                            storedFile.toFile()
+                    );
+
+            if (detected != null
+                    && !detected.isBlank()
+                    && !"application/octet-stream".equals(
+                    detected
+            )) {
+                return detected;
+            }
+
+        } catch (Exception ignored) {
+            // Fall back to the browser-provided type.
+        }
+
+        String provided =
+                file.getContentType();
+
+        return provided == null
+                || provided.isBlank()
+                ? "application/octet-stream"
+                : provided;
     }
 
     private Path requireFile(String id) {
@@ -465,27 +567,11 @@ public class AttachmentService {
 
     private String detectType(String extension) {
 
-        if (
-                List.of(
-                        "png",
-                        "jpg",
-                        "jpeg",
-                        "webp",
-                        "gif",
-                        "bmp",
-                        "svg"
-                ).contains(extension)
-        ) {
+        if (IMAGE_EXTENSIONS.contains(extension)) {
             return "image";
         }
 
-        if (
-                List.of(
-                        "pdf",
-                        "doc",
-                        "docx"
-                ).contains(extension)
-        ) {
+        if (DOCUMENT_EXTENSIONS.contains(extension)) {
             return "document";
         }
 
