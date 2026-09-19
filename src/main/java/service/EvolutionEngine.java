@@ -24,7 +24,7 @@ public class EvolutionEngine {
     private static final Path LOG_FILE =
             Path.of("blackwater-evolution-log.txt");
 
-    private final LearningEngine learningEngine;
+    private final ImprovementEngine improvementEngine;
     private final BenchmarkEngine benchmarkEngine;
 
     private final Map<Domain, DomainState> domains =
@@ -37,10 +37,10 @@ public class EvolutionEngine {
     private long evolutionCycles = 0;
 
     public EvolutionEngine(
-            LearningEngine learningEngine,
+            ImprovementEngine improvementEngine,
             BenchmarkEngine benchmarkEngine
     ) {
-        this.learningEngine = learningEngine;
+        this.improvementEngine = improvementEngine;
         this.benchmarkEngine = benchmarkEngine;
 
         initializeDomains();
@@ -163,85 +163,64 @@ public class EvolutionEngine {
                     "No evolution domains are enabled.";
         }
 
-        return evolveDomain(target);
-    }
-
-    private String evolveDomain(
-            DomainState state
-    ) {
-
-        long oldPower =
-                state.power;
-
-        int oldBenchmark =
-                state.lastBenchmark;
-
-        String topic =
-                getEvolutionTopic(
-                        state.domain
-                );
-
-        String learningResult;
+        /*
+         * The improvement engine identifies the
+         * weakest capability and attempts to improve it.
+         */
+        ImprovementEngine.ImprovementResult result;
 
         try {
 
-            learningResult =
-                    learningEngine.learn(
-                            topic
-                    );
+            result =
+                    improvementEngine
+                            .improveWeakestDomain();
 
         } catch (Exception e) {
 
-            learningResult =
-                    "Learning failed: "
+            return
+                    "Evolution failed: "
                             + e.getMessage();
         }
 
-        BenchmarkEngine.BenchmarkResult benchmark;
+        String domainName =
+                result.domain();
 
-        try {
+        Domain targetDomain =
+                parseDomain(domainName);
 
-            benchmark =
-                    benchmarkEngine.run(
-                            state.domain
-                                    .name()
-                    );
+        if (targetDomain == null) {
 
-        } catch (Exception e) {
-
-            benchmark =
-                    new BenchmarkEngine.BenchmarkResult(
-                            state.domain
-                                    .name()
-                                    .toLowerCase(),
-                            0,
-                            0,
-                            List.of(
-                                    "Benchmark failed."
-                            )
-                    );
+            return
+                    "Evolution completed without "
+                            + "a valid target domain.";
         }
 
-        int newBenchmark =
-                benchmark.score();
+        DomainState state =
+                domains.get(targetDomain);
+
+        int before =
+                result.beforeScore();
+
+        int after =
+                result.afterScore();
+
+        int improvement =
+                after - before;
 
         state.lastBenchmark =
-                newBenchmark;
+                after;
 
         long gain =
                 calculatePowerGain(
                         state,
-                        oldBenchmark,
-                        newBenchmark
+                        improvement,
+                        result.improved()
                 );
 
-        /*
-         * Power only increases when the benchmark
-         * actually improves or when the system
-         * successfully establishes a new capability.
-         */
-
         if (gain > 0) {
+
+            long oldPower =
+                    state.power;
 
             state.power += gain;
 
@@ -251,69 +230,62 @@ public class EvolutionEngine {
 
             evolutionCycles++;
 
+            saveState();
+
             writeLog(
                     "+"
                             + gain
                             + " "
-                            + state.domain.name()
-                            + " Power | "
-                            + "Benchmark "
-                            + oldBenchmark
+                            + targetDomain.name()
+                            + " Power | Benchmark "
+                            + before
                             + " → "
-                            + newBenchmark
-                            + " | "
-                            + learningResult
+                            + after
             );
-
-            saveState();
 
             return
                     "Evolution successful."
                             + System.lineSeparator()
                             + "Domain: "
-                            + state.domain.name()
+                            + targetDomain.name()
+                            + System.lineSeparator()
+                            + "Benchmark: "
+                            + before
+                            + " → "
+                            + after
                             + System.lineSeparator()
                             + "Power: "
                             + oldPower
                             + " → "
                             + state.power
                             + System.lineSeparator()
-                            + "Benchmark: "
-                            + oldBenchmark
-                            + " → "
-                            + newBenchmark
-                            + System.lineSeparator()
                             + "Gain: +"
                             + gain;
         }
-
-        /*
-         * No improvement.
-         */
 
         state.cycles++;
 
         evolutionCycles++;
 
-        writeLog(
-                "No Power increase | "
-                        + state.domain.name()
-                        + " | Benchmark "
-                        + oldBenchmark
-                        + " → "
-                        + newBenchmark
-        );
-
         saveState();
+
+        writeLog(
+                "No measurable improvement | "
+                        + targetDomain.name()
+                        + " | Benchmark "
+                        + before
+                        + " → "
+                        + after
+        );
 
         return
                 "Evolution cycle completed."
                         + System.lineSeparator()
                         + "Domain: "
-                        + state.domain.name()
+                        + targetDomain.name()
                         + System.lineSeparator()
                         + "Benchmark: "
-                        + newBenchmark
+                        + after
                         + "/100"
                         + System.lineSeparator()
                         + "Power unchanged.";
@@ -321,29 +293,33 @@ public class EvolutionEngine {
 
     private long calculatePowerGain(
             DomainState state,
-            int oldBenchmark,
-            int newBenchmark
+            int improvement,
+            boolean improved
     ) {
 
-        int improvement =
-                newBenchmark
-                        - oldBenchmark;
-
-        if (improvement <= 0) {
+        if (!improved
+                || improvement <= 0) {
 
             return 0;
         }
 
         /*
-         * Priority affects how strongly an
-         * improvement contributes to Power.
+         * Power has no artificial upper limit.
+         *
+         * The benchmark is bounded to 100,
+         * but Power itself is open-ended.
          */
 
         long gain =
                 Math.max(
                         1,
-                        improvement / 5
+                        improvement
                 );
+
+        /*
+         * Higher-priority domains receive
+         * a slightly larger reward.
+         */
 
         if (state.priority >= 90) {
 
@@ -355,34 +331,6 @@ public class EvolutionEngine {
         }
 
         return gain;
-    }
-
-    private String getEvolutionTopic(
-            Domain domain
-    ) {
-
-        return switch (domain) {
-
-            case KNOWLEDGE ->
-                    "advanced knowledge retrieval, "
-                            + "fact verification and information quality";
-
-            case REASONING ->
-                    "logical reasoning, "
-                            + "problem solving and inference";
-
-            case RESEARCH ->
-                    "web research, "
-                            + "source discovery and source verification";
-
-            case CODING ->
-                    "software engineering, "
-                            + "programming, debugging and code quality";
-
-            case MEMORY ->
-                    "memory retrieval, "
-                            + "context management and information recall";
-        };
     }
 
     private DomainState selectNextDomain() {
@@ -773,8 +721,7 @@ public class EvolutionEngine {
             this.priority = priority;
             this.power = power;
             this.cycles = cycles;
-            this.lastBenchmark =
-                    lastBenchmark;
+            this.lastBenchmark = lastBenchmark;
         }
     }
 
