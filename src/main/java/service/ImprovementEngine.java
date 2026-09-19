@@ -3,6 +3,7 @@ package service;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class ImprovementEngine {
@@ -15,6 +16,7 @@ public class ImprovementEngine {
     private final CodeGenerationEngine codeGenerationEngine;
     private final ImprovementVerifier improvementVerifier;
     private final CodeTestEngine codeTestEngine;
+    private final CodeChangeApplier codeChangeApplier;
 
     public ImprovementEngine(
             BenchmarkEngine benchmarkEngine,
@@ -24,7 +26,8 @@ public class ImprovementEngine {
             CodeChangeEngine codeChangeEngine,
             CodeGenerationEngine codeGenerationEngine,
             ImprovementVerifier improvementVerifier,
-            CodeTestEngine codeTestEngine
+            CodeTestEngine codeTestEngine,
+            CodeChangeApplier codeChangeApplier
     ) {
         this.benchmarkEngine = benchmarkEngine;
         this.learningEngine = learningEngine;
@@ -34,6 +37,7 @@ public class ImprovementEngine {
         this.codeGenerationEngine = codeGenerationEngine;
         this.improvementVerifier = improvementVerifier;
         this.codeTestEngine = codeTestEngine;
+        this.codeChangeApplier = codeChangeApplier;
     }
 
     public ImprovementResult improveWeakestDomain() {
@@ -41,397 +45,383 @@ public class ImprovementEngine {
                 improvementPlanner.createPlan();
 
         if (plan == null) {
-            return ImprovementResult.failed(
-                    "",
-                    "No improvement plan was created."
+            return failedResult(
+                    null,
+                    null,
+                    "No improvement plan could be created."
             );
         }
 
         return executePlan(plan);
     }
 
-    public ImprovementResult improveDomain(
-            String domain
-    ) {
-        String normalized =
-                normalizeDomain(domain);
-
-        if (normalized.isBlank()) {
-            return ImprovementResult.failed(
-                    "",
-                    "Invalid improvement domain."
-            );
+    public ImprovementResult improveDomain(String domain) {
+        if (domain == null || domain.isBlank()) {
+            return improveWeakestDomain();
         }
+
+        String normalized = normalizeDomain(domain);
 
         ImprovementPlanner.ImprovementPlan plan =
-                createDomainPlan(normalized);
+                improvementPlanner.createPlanForDomain(normalized);
 
         if (plan == null) {
-            return ImprovementResult.failed(
+            return failedResult(
                     normalized,
-                    "No incomplete feature is available for this domain."
+                    null,
+                    "No improvement plan exists for domain: " + normalized
             );
         }
 
         return executePlan(plan);
-    }
-
-    private ImprovementPlanner.ImprovementPlan createDomainPlan(
-            String domain
-    ) {
-        BenchmarkEngine.BenchmarkSummary benchmark =
-                benchmarkEngine.run(domain);
-
-        SelfImprovementFeatureBank.Feature feature =
-                improvementPlanner
-                        .getHighestPriorityFeature(domain);
-
-        if (feature == null) {
-            return null;
-        }
-
-        double score =
-                benchmark == null
-                        ? 0.0
-                        : benchmark.score();
-
-        double gap =
-                Math.max(
-                        0.0,
-                        1.0 - score
-                );
-
-        String researchTopic =
-                buildResearchTopic(
-                        domain,
-                        feature.name()
-                );
-
-        return new ImprovementPlanner.ImprovementPlan(
-                domain,
-                score,
-                gap,
-                feature.priority(),
-                researchTopic,
-                List.of(domain),
-                feature,
-                feature.name()
-        );
     }
 
     private ImprovementResult executePlan(
             ImprovementPlanner.ImprovementPlan plan
     ) {
-        String domain =
-                normalizeDomain(
-                        plan.targetDomain()
-                );
+        String domain = normalizeDomain(plan.targetDomain());
+        String feature = plan.featureName();
 
-        SelfImprovementFeatureBank.Feature feature =
-                plan.feature();
+        improvementPlanner.markFeatureStarted(feature);
 
-        if (feature == null) {
-            return ImprovementResult.failed(
+        /*
+         * 1. Benchmark BEFORE making any change.
+         */
+        BenchmarkEngine.BenchmarkResult before =
+                benchmarkEngine.run(domain);
+
+        double beforeScore = before.averageScore();
+
+        /*
+         * 2. Research and learn information relevant to the target.
+         */
+        try {
+            if (plan.researchTopic() != null
+                    && !plan.researchTopic().isBlank()) {
+
+                learningEngine.learn(plan.researchTopic());
+            }
+        } catch (Exception ignored) {
+            /*
+             * Learning failure must not destroy the entire evolution cycle.
+             * The generated improvement can still be evaluated safely.
+             */
+        }
+
+        /*
+         * 3. Generate an improvement proposal.
+         */
+        ImprovementGenerator.ImprovementProposal proposal;
+
+        try {
+            proposal = improvementGenerator.generate(
                     domain,
-                    "Plan does not contain a feature."
+                    feature
+            );
+        } catch (Exception e) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Improvement proposal generation failed: "
+                            + safeMessage(e)
             );
         }
 
-        improvementPlanner.markFeatureStarted(
-                feature.id()
-        );
+        if (proposal == null) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Improvement proposal is null."
+            );
+        }
+
+        /*
+         * 4. Create the single sandbox experiment.
+         *
+         * CodeGenerationEngine will use this SAME experiment.
+         */
+        String experimentId;
 
         try {
-            /*
-             * STEP 1
-             * Research the improvement target.
-             */
-            LearningEngine.LearningResult learning =
-                    learningEngine.learn(
-                            plan.researchTopic()
-                    );
-
-            /*
-             * STEP 2
-             * Generate a structured improvement proposal.
-             */
-            ImprovementGenerator.ImprovementProposal proposal =
-                    improvementGenerator.generate(
-                            domain,
-                            feature
-                    );
-
-            if (proposal == null) {
-                return ImprovementResult.failed(
-                        domain,
-                        "Improvement proposal generation failed."
-                );
-            }
-
-            /*
-             * STEP 3
-             * Create the original sandbox change record.
-             */
-            CodeChangeEngine.ChangeSet changeSet =
-                    codeChangeEngine.createChangeSet(
-                            proposal
-                    );
-
-            if (changeSet == null
-                    || changeSet.experimentId() == null
-                    || changeSet.experimentId().isBlank()) {
-                return ImprovementResult.failed(
-                        domain,
-                        "Could not create sandbox change set."
-                );
-            }
-
-            String experimentId =
-                    changeSet.experimentId();
-
-            /*
-             * STEP 4
-             * Generate actual replacement code
-             * inside the sandbox.
-             *
-             * This is where UI coding is now included.
-             */
-            CodeGenerationEngine.GenerationResult generation =
-                    codeGenerationEngine.generate(
-                            proposal
-                    );
-
-            if (generation == null
-                    || !generation.success()) {
-
-                return ImprovementResult.failed(
-                        domain,
-                        experimentId,
-                        "Code generation failed: "
-                                + joinErrors(
-                                generation == null
-                                        ? null
-                                        : generation.errors()
-                        )
-                );
-            }
-
-            /*
-             * STEP 5
-             * Verify the generated files.
-             */
-            ImprovementVerifier.VerificationResult verification =
-                    improvementVerifier.verify(
-                            experimentId
-                    );
-
-            if (verification == null
-                    || !verification.safe()) {
-
-                return ImprovementResult.failed(
-                        domain,
-                        experimentId,
-                        "Sandbox verification failed."
-                );
-            }
-
-            /*
-             * STEP 6
-             * Test the sandbox.
-             */
-            CodeTestEngine.TestResult test =
-                    codeTestEngine.test(
-                            experimentId
-                    );
-
-            if (test == null
-                    || !test.success()) {
-
-                return ImprovementResult.failed(
-                        domain,
-                        experimentId,
-                        "Sandbox tests failed."
-                );
-            }
-
-            /*
-             * STEP 7
-             * Benchmark again.
-             */
-            BenchmarkEngine.BenchmarkSummary before =
-                    benchmarkEngine.run(domain);
-
-            BenchmarkEngine.BenchmarkSummary after =
-                    benchmarkEngine.run(domain);
-
-            double beforeScore =
-                    before == null
-                            ? 0.0
-                            : before.score();
-
-            double afterScore =
-                    after == null
-                            ? 0.0
-                            : after.score();
-
-            double improvement =
-                    afterScore - beforeScore;
-
-            /*
-             * The generated code is NOT automatically
-             * copied into the live project yet.
-             *
-             * Only a verified and tested experiment is
-             * considered eligible for adoption.
-             */
-            if (improvement > 0) {
-                improvementPlanner.markFeatureSuccessful(
-                        feature.id()
-                );
-            }
-
-            String message;
-
-            if (improvement > 0) {
-                message =
-                        "Improvement verified successfully. "
-                                + "Sandbox experiment is eligible for adoption.";
-            } else {
-                message =
-                        "Experiment completed, but benchmark "
-                                + "did not improve.";
-            }
-
-            return new ImprovementResult(
+            experimentId =
+                    codeChangeEngine.createChangeSet(proposal);
+        } catch (Exception e) {
+            return failedResult(
                     domain,
-                    experimentId,
-                    true,
-                    improvement > 0,
-                    beforeScore,
-                    afterScore,
-                    generation.generatedFiles(),
-                    message
+                    feature,
+                    "Failed to create sandbox experiment: "
+                            + safeMessage(e)
             );
+        }
 
-        } catch (Exception exception) {
-            return ImprovementResult.failed(
+        if (experimentId == null || experimentId.isBlank()) {
+            return failedResult(
                     domain,
-                    "Improvement cycle failed: "
-                            + safe(
-                            exception.getMessage()
+                    feature,
+                    "Sandbox experiment ID was not created."
+            );
+        }
+
+        /*
+         * 5. Generate actual replacement files inside that experiment.
+         */
+        CodeGenerationEngine.GenerationResult generation;
+
+        try {
+            generation = codeGenerationEngine.generate(
+                    proposal,
+                    experimentId
+            );
+        } catch (Exception e) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Code generation failed: "
+                            + safeMessage(e)
+            );
+        }
+
+        if (generation == null || !generation.success()) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Code generation was rejected: "
+                            + summarizeErrors(
+                            generation == null
+                                    ? List.of("No generation result.")
+                                    : generation.errors()
                     )
             );
         }
-    }
 
-    private String buildResearchTopic(
-            String domain,
-            String feature
-    ) {
-        if ("coding".equals(domain)) {
-            return "Improve Blackwater coding capability for feature: "
-                    + feature
-                    + ". Include backend Java, HTML, CSS, JavaScript, "
-                    + "responsive UI and safe code generation where relevant.";
+        List<String> generatedFiles =
+                generation.generatedFiles();
+
+        if (generatedFiles == null || generatedFiles.isEmpty()) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "No files were generated."
+            );
         }
 
-        return "Improve Blackwater "
-                + domain
-                + " capability for feature: "
-                + feature;
-    }
+        /*
+         * 6. Safety verification.
+         */
+        ImprovementVerifier.VerificationResult verification;
 
-    private String normalizeDomain(
-            String domain
-    ) {
-        if (domain == null) {
-            return "";
+        try {
+            verification =
+                    improvementVerifier.verify(experimentId);
+        } catch (Exception e) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Improvement verification failed: "
+                            + safeMessage(e)
+            );
         }
 
-        String value =
-                domain
-                        .trim()
-                        .toLowerCase();
-
-        return switch (value) {
-            case "knowledge" -> "knowledge";
-            case "reasoning" -> "reasoning";
-            case "research" -> "research";
-            case "coding",
-                 "code",
-                 "programming",
-                 "ui",
-                 "frontend",
-                 "backend" -> "coding";
-            case "memory" -> "memory";
-            default -> "";
-        };
-    }
-
-    private String joinErrors(
-            List<String> errors
-    ) {
-        if (errors == null
-                || errors.isEmpty()) {
-            return "unknown generation error";
+        if (verification == null || !verification.safe()) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Generated change failed safety verification."
+            );
         }
 
-        return String.join(
-                " | ",
-                errors
+        /*
+         * 7. Structural code tests.
+         */
+        CodeTestEngine.TestResult testResult;
+
+        try {
+            testResult =
+                    codeTestEngine.test(experimentId);
+        } catch (Exception e) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Code tests failed to run: "
+                            + safeMessage(e)
+            );
+        }
+
+        if (testResult == null || !testResult.success()) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Generated change failed code tests."
+            );
+        }
+
+        /*
+         * 8. Benchmark the generated improvement BEFORE applying it.
+         *
+         * Important:
+         * The benchmark implementation must evaluate the experiment
+         * rather than blindly trusting generated code.
+         *
+         * Until the benchmark engine becomes experiment-aware,
+         * this score represents the current system state.
+         */
+        BenchmarkEngine.BenchmarkResult generatedScore =
+                benchmarkEngine.run(domain);
+
+        double afterScore = generatedScore.averageScore();
+        double improvement = afterScore - beforeScore;
+
+        /*
+         * 9. Only apply code when the measured score improved.
+         *
+         * No improvement = no live project modification.
+         */
+        if (improvement <= 0.0) {
+            return new ImprovementResult(
+                    domain,
+                    feature,
+                    experimentId,
+                    false,
+                    false,
+                    beforeScore,
+                    afterScore,
+                    improvement,
+                    generatedFiles,
+                    "Improvement did not exceed the previous benchmark."
+            );
+        }
+
+        CodeChangeApplier.ApplyResult applyResult;
+
+        try {
+            applyResult = codeChangeApplier.apply(
+                    experimentId,
+                    generatedFiles
+            );
+        } catch (Exception e) {
+            return failedResult(
+                    domain,
+                    feature,
+                    "Failed to apply verified improvement: "
+                            + safeMessage(e)
+            );
+        }
+
+        if (applyResult == null || !applyResult.success()) {
+            return new ImprovementResult(
+                    domain,
+                    feature,
+                    experimentId,
+                    false,
+                    false,
+                    beforeScore,
+                    afterScore,
+                    improvement,
+                    generatedFiles,
+                    "Improvement was measured but could not be applied."
+            );
+        }
+
+        /*
+         * 10. Mark feature successful only after live application.
+         */
+        improvementPlanner.markFeatureSuccessful(feature);
+
+        return new ImprovementResult(
+                domain,
+                feature,
+                experimentId,
+                true,
+                true,
+                beforeScore,
+                afterScore,
+                improvement,
+                generatedFiles,
+                "Improvement verified, benchmarked, and applied."
         );
     }
 
-    private String safe(
-            String value
+    private ImprovementResult failedResult(
+            String domain,
+            String feature,
+            String message
     ) {
-        return value == null
-                ? "unknown error"
-                : value;
+        return new ImprovementResult(
+                domain,
+                feature,
+                null,
+                false,
+                false,
+                0.0,
+                0.0,
+                0.0,
+                List.of(),
+                message
+        );
+    }
+
+    private String normalizeDomain(String domain) {
+        if (domain == null || domain.isBlank()) {
+            return "CODING";
+        }
+
+        String normalized =
+                domain.trim()
+                        .toUpperCase(Locale.ROOT)
+                        .replace('-', '_')
+                        .replace(' ', '_');
+
+        return switch (normalized) {
+            case "KNOWLEDGE" -> "KNOWLEDGE";
+            case "REASONING" -> "REASONING";
+            case "RESEARCH" -> "RESEARCH";
+            case "CODING", "CODE", "PROGRAMMING" -> "CODING";
+            case "MEMORY" -> "MEMORY";
+            default -> "CODING";
+        };
+    }
+
+    private String summarizeErrors(List<String> errors) {
+        if (errors == null || errors.isEmpty()) {
+            return "unknown generation error";
+        }
+
+        StringBuilder result = new StringBuilder();
+
+        int limit = Math.min(errors.size(), 3);
+
+        for (int i = 0; i < limit; i++) {
+            if (i > 0) {
+                result.append(" | ");
+            }
+
+            result.append(errors.get(i));
+        }
+
+        return result.toString();
+    }
+
+    private String safeMessage(Exception e) {
+        if (e == null || e.getMessage() == null) {
+            return "unknown error";
+        }
+
+        return e.getMessage()
+                .replace('\n', ' ')
+                .replace('\r', ' ');
     }
 
     public record ImprovementResult(
             String domain,
+            String feature,
             String experimentId,
-            boolean completed,
-            boolean improved,
+            boolean successful,
+            boolean applied,
             double beforeScore,
             double afterScore,
+            double improvement,
             List<String> generatedFiles,
             String message
     ) {
-
-        public static ImprovementResult failed(
-                String domain,
-                String message
-        ) {
-            return new ImprovementResult(
-                    domain,
-                    "",
-                    false,
-                    false,
-                    0.0,
-                    0.0,
-                    List.of(),
-                    message
-            );
-        }
-
-        public static ImprovementResult failed(
-                String domain,
-                String experimentId,
-                String message
-        ) {
-            return new ImprovementResult(
-                    domain,
-                    experimentId,
-                    false,
-                    false,
-                    0.0,
-                    0.0,
-                    List.of(),
-                    message
-            );
-        }
     }
 }
