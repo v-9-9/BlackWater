@@ -12,15 +12,18 @@ public class BenchmarkEngine {
     private final KnowledgeService knowledgeService;
     private final LearningEngine learningEngine;
     private final AIService aiService;
+    private final BenchmarkTaskBank taskBank;
 
     public BenchmarkEngine(
             KnowledgeService knowledgeService,
             LearningEngine learningEngine,
-            AIService aiService
+            AIService aiService,
+            BenchmarkTaskBank taskBank
     ) {
         this.knowledgeService = knowledgeService;
         this.learningEngine = learningEngine;
         this.aiService = aiService;
+        this.taskBank = taskBank;
     }
 
     public synchronized BenchmarkResult run(
@@ -40,28 +43,36 @@ public class BenchmarkEngine {
             );
         }
 
-        return switch (
-                domain.trim().toLowerCase(Locale.ROOT)
-        ) {
+        String normalized =
+                domain.trim()
+                        .toLowerCase(Locale.ROOT);
+
+        return switch (normalized) {
 
             case "knowledge" ->
-                    testKnowledge();
+                    runAITaskBenchmark(
+                            "knowledge"
+                    );
 
             case "reasoning" ->
-                    testReasoning();
-
-            case "research" ->
-                    testResearch();
+                    runAITaskBenchmark(
+                            "reasoning"
+                    );
 
             case "coding" ->
-                    testCoding();
+                    runAITaskBenchmark(
+                            "coding"
+                    );
+
+            case "research" ->
+                    runResearchBenchmark();
 
             case "memory" ->
-                    testMemory();
+                    runMemoryBenchmark();
 
             default ->
                     new BenchmarkResult(
-                            domain,
+                            normalized,
                             0,
                             0,
                             List.of(
@@ -71,219 +82,334 @@ public class BenchmarkEngine {
         };
     }
 
-    private BenchmarkResult testKnowledge() {
+    private BenchmarkResult runAITaskBenchmark(
+            String domain
+    ) {
 
-        List<TestCase> tests =
-                List.of(
-                        new TestCase(
-                                "What is the capital of France?",
-                                List.of(
-                                        "paris"
-                                )
-                        ),
-                        new TestCase(
-                                "What planet is known as the Red Planet?",
-                                List.of(
-                                        "mars"
-                                )
-                        ),
-                        new TestCase(
-                                "What is water made of?",
-                                List.of(
-                                        "hydrogen",
-                                        "oxygen",
-                                        "h2o"
-                                )
-                        )
-                );
+        List<BenchmarkTaskBank.BenchmarkTask> tasks =
+                taskBank.getTasks(domain);
 
-        return runAITests(
-                "knowledge",
-                tests
-        );
-    }
+        if (tasks.isEmpty()) {
 
-    private BenchmarkResult testReasoning() {
+            return new BenchmarkResult(
+                    domain,
+                    0,
+                    0,
+                    List.of(
+                            "No benchmark tasks available."
+                    )
+            );
+        }
 
-        List<TestCase> tests =
-                List.of(
-                        new TestCase(
-                                "If all cats are animals and Luna is a cat, "
-                                        + "is Luna an animal?",
-                                List.of(
-                                        "yes"
-                                )
-                        ),
-                        new TestCase(
-                                "What comes next: 2, 4, 6, 8?",
-                                List.of(
-                                        "10"
-                                )
-                        ),
-                        new TestCase(
-                                "If A is greater than B and B is greater "
-                                        + "than C, is A greater than C?",
-                                List.of(
-                                        "yes"
-                                )
-                        )
-                );
+        double earnedPoints = 0;
 
-        return runAITests(
-                "reasoning",
-                tests
-        );
-    }
+        double maximumPoints = 0;
 
-    private BenchmarkResult testResearch() {
-
-        int score = 0;
+        int passed = 0;
 
         List<String> details =
                 new ArrayList<>();
 
-        try {
+        for (
+                BenchmarkTaskBank.BenchmarkTask task
+                : tasks
+        ) {
 
-            String result =
-                    learningEngine.learn(
-                            "Java programming language "
-                                    + "official documentation"
+            int difficulty =
+                    Math.max(
+                            1,
+                            task.difficulty()
                     );
 
-            if (result != null
-                    && !result.isBlank()
-                    && !result.contains(
-                            "No information"
-                    )
-                    && !result.contains(
-                            "not useful"
-                    )) {
+            double points =
+                    difficulty;
 
-                score += 50;
+            maximumPoints += points;
+
+            String response;
+
+            try {
+
+                response =
+                        aiService.generate(
+                                task.prompt(),
+                                "swift",
+                                null
+                        );
+
+            } catch (Exception e) {
 
                 details.add(
-                        "Research and learning cycle completed."
+                        "Execution failed: "
+                                + task.prompt()
+                );
+
+                continue;
+            }
+
+            if (matchesExpected(
+                    response,
+                    task.expected()
+            )) {
+
+                earnedPoints += points;
+
+                passed++;
+
+                details.add(
+                        "Passed [D"
+                                + difficulty
+                                + "]: "
+                                + task.prompt()
                 );
 
             } else {
 
                 details.add(
-                        "Research returned insufficient information."
+                        "Failed [D"
+                                + difficulty
+                                + "]: "
+                                + task.prompt()
                 );
             }
-
-        } catch (Exception e) {
-
-            details.add(
-                    "Research test failed."
-            );
         }
 
-        try {
+        int score =
+                maximumPoints <= 0
+                        ? 0
+                        : (int) Math.round(
+                                (
+                                        earnedPoints
+                                                / maximumPoints
+                                ) * 100
+                        );
 
-            List<String> knowledge =
-                    knowledgeService.search(
-                            "Java programming"
-                    );
+        details.add(
+                "Passed: "
+                        + passed
+                        + "/"
+                        + tasks.size()
+        );
 
-            if (!knowledge.isEmpty()) {
+        details.add(
+                "Weighted score: "
+                        + score
+                        + "/100"
+        );
 
-                score += 50;
-
-                details.add(
-                        "Research result is retrievable "
-                                + "from the knowledge system."
-                );
-
-            } else {
-
-                details.add(
-                        "No matching research result "
-                                + "was found in knowledge."
-                );
-            }
-
-        } catch (Exception e) {
-
-            details.add(
-                    "Knowledge retrieval test failed."
-            );
-        }
-
-        return result(
-                "research",
-                score,
+        return new BenchmarkResult(
+                domain,
+                Math.max(
+                        0,
+                        Math.min(
+                                100,
+                                score
+                        )
+                ),
+                tasks.size(),
                 details
         );
     }
 
-    private BenchmarkResult testCoding() {
+    private BenchmarkResult runResearchBenchmark() {
 
-        List<TestCase> tests =
-                List.of(
-                        new TestCase(
-                                """
-                                Write a Java method named add that
-                                receives two integers and returns
-                                their sum.
-                                """,
-                                List.of(
-                                        "int",
-                                        "add",
-                                        "return",
-                                        "+"
-                                )
-                        ),
-                        new TestCase(
-                                """
-                                In Java, which keyword is used to
-                                create a subclass from another class?
-                                """,
-                                List.of(
-                                        "extends"
-                                )
-                        ),
-                        new TestCase(
-                                """
-                                What data structure follows FIFO order?
-                                """,
-                                List.of(
-                                        "queue"
-                                )
-                        )
+        List<BenchmarkTaskBank.BenchmarkTask> tasks =
+                taskBank.getTasks(
+                        "research"
                 );
 
-        return runAITests(
-                "coding",
-                tests
-        );
-    }
+        if (tasks.isEmpty()) {
 
-    private BenchmarkResult testMemory() {
+            return new BenchmarkResult(
+                    "research",
+                    0,
+                    0,
+                    List.of(
+                            "No research tasks available."
+                    )
+            );
+        }
+
+        double earnedPoints = 0;
+
+        double maximumPoints = 0;
 
         List<String> details =
                 new ArrayList<>();
 
+        int passed = 0;
+
+        for (
+                BenchmarkTaskBank.BenchmarkTask task
+                : tasks
+        ) {
+
+            int difficulty =
+                    Math.max(
+                            1,
+                            task.difficulty()
+                    );
+
+            maximumPoints += difficulty;
+
+            String result;
+
+            try {
+
+                result =
+                        learningEngine.learn(
+                                task.prompt()
+                        );
+
+            } catch (Exception e) {
+
+                details.add(
+                        "Research failed: "
+                                + task.prompt()
+                );
+
+                continue;
+            }
+
+            boolean useful =
+                    result != null
+                            && !result.isBlank()
+                            && !result.contains(
+                                    "No information"
+                            )
+                            && !result.contains(
+                                    "not useful"
+                            );
+
+            if (!useful) {
+
+                details.add(
+                        "Research failed [D"
+                                + difficulty
+                                + "]: "
+                                + task.prompt()
+                );
+
+                continue;
+            }
+
+            boolean knowledgeAvailable;
+
+            try {
+
+                knowledgeAvailable =
+                        !knowledgeService.search(
+                                task.expected()
+                                        .getFirst()
+                        ).isEmpty();
+
+            } catch (Exception e) {
+
+                knowledgeAvailable = false;
+            }
+
+            if (knowledgeAvailable) {
+
+                earnedPoints += difficulty;
+
+                passed++;
+
+                details.add(
+                        "Research passed [D"
+                                + difficulty
+                                + "]: "
+                                + task.prompt()
+                );
+
+            } else {
+
+                details.add(
+                        "Research completed but "
+                                + "verification failed: "
+                                + task.prompt()
+                );
+            }
+        }
+
+        int score =
+                maximumPoints <= 0
+                        ? 0
+                        : (int) Math.round(
+                                (
+                                        earnedPoints
+                                                / maximumPoints
+                                ) * 100
+                        );
+
+        details.add(
+                "Passed: "
+                        + passed
+                        + "/"
+                        + tasks.size()
+        );
+
+        return new BenchmarkResult(
+                "research",
+                Math.max(
+                        0,
+                        Math.min(
+                                100,
+                                score
+                        )
+                ),
+                tasks.size(),
+                details
+        );
+    }
+
+    private BenchmarkResult runMemoryBenchmark() {
+
+        List<BenchmarkTaskBank.BenchmarkTask> tasks =
+                taskBank.getTasks(
+                        "memory"
+                );
+
+        if (tasks.isEmpty()) {
+
+            return new BenchmarkResult(
+                    "memory",
+                    0,
+                    0,
+                    List.of(
+                            "No memory tasks available."
+                    )
+            );
+        }
+
         int score = 0;
+
+        int completed = 0;
+
+        List<String> details =
+                new ArrayList<>();
+
+        long knowledgeCount = 0;
 
         try {
 
-            long count =
+            knowledgeCount =
                     knowledgeService.count();
 
-            if (count > 0) {
+        } catch (Exception ignored) {
+        }
 
-                score += 50;
+        if (knowledgeCount > 0) {
 
-                details.add(
-                        "Persistent information exists."
-                );
-            }
-
-        } catch (Exception e) {
+            score += 50;
 
             details.add(
-                    "Persistent storage test failed."
+                    "Persistent information exists."
+            );
+
+        } else {
+
+            details.add(
+                    "No persistent knowledge exists."
             );
         }
 
@@ -299,6 +425,12 @@ public class BenchmarkEngine {
                 details.add(
                         "Stored information can be recalled."
                 );
+
+            } else {
+
+                details.add(
+                        "Stored information could not be recalled."
+                );
             }
 
         } catch (Exception e) {
@@ -308,85 +440,16 @@ public class BenchmarkEngine {
             );
         }
 
-        return result(
+        completed =
+                tasks.size();
+
+        return new BenchmarkResult(
                 "memory",
-                score,
-                details
-        );
-    }
-
-    private BenchmarkResult runAITests(
-            String domain,
-            List<TestCase> tests
-    ) {
-
-        if (tests.isEmpty()) {
-
-            return result(
-                    domain,
-                    0,
-                    List.of(
-                            "No tests available."
-                    )
-            );
-        }
-
-        int passed = 0;
-
-        List<String> details =
-                new ArrayList<>();
-
-        for (TestCase test :
-                tests) {
-
-            String response;
-
-            try {
-
-                response =
-                        aiService.generate(
-                                test.question(),
-                                "swift",
-                                null
-                        );
-
-            } catch (Exception e) {
-
-                details.add(
-                        "Test failed to execute."
-                );
-
-                continue;
-            }
-
-            if (matchesExpected(
-                    response,
-                    test.expected()
-            )) {
-
-                passed++;
-
-                details.add(
-                        "Passed: "
-                                + test.question()
-                );
-
-            } else {
-
-                details.add(
-                        "Failed: "
-                                + test.question()
-                );
-            }
-        }
-
-        int score =
-                (passed * 100)
-                        / tests.size();
-
-        return result(
-                domain,
-                score,
+                Math.min(
+                        100,
+                        score
+                ),
+                completed,
                 details
         );
     }
@@ -397,27 +460,40 @@ public class BenchmarkEngine {
     ) {
 
         if (response == null
-                || response.isBlank()) {
+                || response.isBlank()
+                || expected == null
+                || expected.isEmpty()) {
 
             return false;
         }
 
-        String normalized =
+        String normalizedResponse =
                 response
                         .toLowerCase(Locale.ROOT)
                         .replaceAll(
                                 "[^\\p{L}\\p{N}+.#_-]+",
                                 " "
-                        );
+                        )
+                        .trim();
 
         for (String expectedValue :
                 expected) {
 
-            if (normalized.contains(
+            if (expectedValue == null
+                    || expectedValue.isBlank()) {
+
+                continue;
+            }
+
+            String normalizedExpected =
                     expectedValue
                             .toLowerCase(
                                     Locale.ROOT
                             )
+                            .trim();
+
+            if (normalizedResponse.contains(
+                    normalizedExpected
             )) {
 
                 return true;
@@ -427,33 +503,41 @@ public class BenchmarkEngine {
         return false;
     }
 
-    private BenchmarkResult result(
-            String domain,
-            int score,
-            List<String> details
-    ) {
+    public synchronized BenchmarkSummary runAll() {
 
-        int normalized =
-                Math.max(
-                        0,
-                        Math.min(
-                                100,
-                                score
-                        )
-                );
+        BenchmarkResult knowledge =
+                run("knowledge");
 
-        return new BenchmarkResult(
-                domain,
-                normalized,
-                details.size(),
-                details
+        BenchmarkResult reasoning =
+                run("reasoning");
+
+        BenchmarkResult research =
+                run("research");
+
+        BenchmarkResult coding =
+                run("coding");
+
+        BenchmarkResult memory =
+                run("memory");
+
+        int total =
+                knowledge.score()
+                        + reasoning.score()
+                        + research.score()
+                        + coding.score()
+                        + memory.score();
+
+        int average =
+                total / 5;
+
+        return new BenchmarkSummary(
+                average,
+                knowledge,
+                reasoning,
+                research,
+                coding,
+                memory
         );
-    }
-
-    private record TestCase(
-            String question,
-            List<String> expected
-    ) {
     }
 
     public record BenchmarkResult(
@@ -461,6 +545,16 @@ public class BenchmarkEngine {
             int score,
             int testsCompleted,
             List<String> details
+    ) {
+    }
+
+    public record BenchmarkSummary(
+            int averageScore,
+            BenchmarkResult knowledge,
+            BenchmarkResult reasoning,
+            BenchmarkResult research,
+            BenchmarkResult coding,
+            BenchmarkResult memory
     ) {
     }
 }
