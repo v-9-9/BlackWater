@@ -3,7 +3,6 @@ package service;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 
 @Service
@@ -11,56 +10,59 @@ public class ImprovementEngine {
 
     private final BenchmarkEngine benchmarkEngine;
     private final LearningEngine learningEngine;
+    private final ImprovementPlanner improvementPlanner;
 
     public ImprovementEngine(
             BenchmarkEngine benchmarkEngine,
-            LearningEngine learningEngine
+            LearningEngine learningEngine,
+            ImprovementPlanner improvementPlanner
     ) {
         this.benchmarkEngine = benchmarkEngine;
         this.learningEngine = learningEngine;
+        this.improvementPlanner = improvementPlanner;
     }
 
     public synchronized ImprovementResult improveWeakestDomain() {
 
-        List<DomainScore> domains =
-                collectBenchmarks();
+        ImprovementPlanner.ImprovementPlan plan;
 
-        if (domains.isEmpty()) {
+        try {
 
-            return new ImprovementResult(
-                    "unknown",
-                    0,
-                    0,
-                    false,
-                    "No benchmark data available."
-            );
-        }
+            plan =
+                    improvementPlanner.createPlan();
 
-        DomainScore weakest =
-                domains.stream()
-                        .min(
-                                Comparator
-                                        .comparingInt(
-                                                DomainScore::score
-                                        )
-                        )
-                        .orElse(null);
-
-        if (weakest == null) {
+        } catch (Exception e) {
 
             return new ImprovementResult(
                     "unknown",
                     0,
                     0,
                     false,
-                    "Could not identify a weak domain."
+                    "Could not create improvement plan: "
+                            + e.getMessage()
             );
         }
+
+        if (plan.targetDomain() == null
+                || plan.targetDomain().isBlank()) {
+
+            return new ImprovementResult(
+                    "unknown",
+                    0,
+                    0,
+                    false,
+                    "No improvement target found."
+            );
+        }
+
+        String domain =
+                plan.targetDomain();
+
+        int before =
+                plan.currentScore();
 
         String topic =
-                getImprovementTopic(
-                        weakest.domain()
-                );
+                plan.researchTopic();
 
         String learningResult;
 
@@ -74,22 +76,35 @@ public class ImprovementEngine {
         } catch (Exception e) {
 
             return new ImprovementResult(
-                    weakest.domain(),
-                    weakest.score(),
-                    weakest.score(),
+                    domain,
+                    before,
+                    before,
                     false,
                     "Learning failed: "
                             + e.getMessage()
             );
         }
 
-        BenchmarkEngine.BenchmarkResult after =
-                benchmarkEngine.run(
-                        weakest.domain()
-                );
+        BenchmarkEngine.BenchmarkResult after;
 
-        int before =
-                weakest.score();
+        try {
+
+            after =
+                    benchmarkEngine.run(
+                            domain
+                    );
+
+        } catch (Exception e) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    false,
+                    "Post-learning benchmark failed: "
+                            + e.getMessage()
+            );
+        }
 
         int afterScore =
                 after.score();
@@ -97,32 +112,53 @@ public class ImprovementEngine {
         boolean improved =
                 afterScore > before;
 
+        int improvement =
+                afterScore - before;
+
         String message;
 
         if (improved) {
 
             message =
-                    "Domain improved from "
+                    "Domain improved."
+                            + System.lineSeparator()
+                            + "Domain: "
+                            + domain
+                            + System.lineSeparator()
+                            + "Difficulty: "
+                            + plan.difficulty()
+                            + "/5"
+                            + System.lineSeparator()
+                            + "Benchmark: "
                             + before
-                            + "/100 to "
+                            + " → "
                             + afterScore
-                            + "/100.";
+                            + System.lineSeparator()
+                            + "Improvement: +"
+                            + improvement;
 
         } else {
 
             message =
-                    "No measurable improvement. "
-                            + "Benchmark remained at "
-                            + afterScore
-                            + "/100.";
+                    "No measurable improvement."
+                            + System.lineSeparator()
+                            + "Domain: "
+                            + domain
+                            + System.lineSeparator()
+                            + "Benchmark: "
+                            + before
+                            + " → "
+                            + afterScore;
         }
 
         return new ImprovementResult(
-                weakest.domain(),
+                domain,
                 before,
                 afterScore,
                 improved,
                 message
+                        + System.lineSeparator()
+                        + "Research:"
                         + System.lineSeparator()
                         + learningResult
         );
@@ -182,43 +218,6 @@ public class ImprovementEngine {
 
         } catch (Exception ignored) {
         }
-    }
-
-    private String getImprovementTopic(
-            String domain
-    ) {
-
-        return switch (domain) {
-
-            case "knowledge" ->
-                    "advanced knowledge retrieval, "
-                            + "fact checking, information quality "
-                            + "and knowledge organization";
-
-            case "reasoning" ->
-                    "logical reasoning, "
-                            + "multi-step problem solving, "
-                            + "deduction and inference";
-
-            case "research" ->
-                    "advanced web research, "
-                            + "source discovery, source comparison, "
-                            + "verification and information synthesis";
-
-            case "coding" ->
-                    "advanced software engineering, "
-                            + "Java programming, debugging, "
-                            + "architecture, algorithms and code quality";
-
-            case "memory" ->
-                    "advanced memory retrieval, "
-                            + "context management, information recall "
-                            + "and long-term knowledge organization";
-
-            default ->
-                    "general artificial intelligence "
-                            + "reasoning and knowledge";
-        };
     }
 
     public record DomainScore(
