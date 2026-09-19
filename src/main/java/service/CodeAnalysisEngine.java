@@ -8,215 +8,161 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Service
 public class CodeAnalysisEngine {
 
     private static final Path PROJECT_ROOT =
-            Path.of("src/main");
+            Path.of(".");
 
-    private static final int MAX_FILE_SIZE =
-            300_000;
+    private static final int MAX_FILE_SIZE = 300_000;
 
-    private static final List<String> IGNORED_DIRECTORIES =
-            List.of(
-                    "target",
+    private static final Set<String> SUPPORTED_EXTENSIONS =
+            Set.of(
+                    "java",
+                    "html",
+                    "css",
+                    "js",
+                    "json",
+                    "xml",
+                    "properties",
+                    "yml",
+                    "yaml",
+                    "md"
+            );
+
+    private static final Set<String> IGNORED_DIRECTORIES =
+            Set.of(
                     ".git",
+                    "target",
                     "blackwater-sandbox",
-                    "node_modules"
+                    "node_modules",
+                    ".idea",
+                    ".vscode"
             );
 
-    public synchronized ProjectAnalysis analyzeProject() {
-
+    public ProjectAnalysis analyzeProject() {
         List<SourceFile> files =
-                new ArrayList<>();
+                scanProject();
 
-        if (!Files.exists(PROJECT_ROOT)) {
+        long javaFiles =
+                files.stream()
+                        .filter(file ->
+                                "java".equals(file.extension()))
+                        .count();
 
-            return new ProjectAnalysis(
-                    0,
-                    0,
-                    0,
-                    0,
-                    files
-            );
-        }
+        long uiFiles =
+                files.stream()
+                        .filter(file ->
+                                isUiFile(file.extension()))
+                        .count();
 
-        try {
+        long webFiles =
+                files.stream()
+                        .filter(file ->
+                                isWebFile(file.extension()))
+                        .count();
 
-            Files.walk(PROJECT_ROOT)
-                    .filter(
-                            Files::isRegularFile
-                    )
-                    .filter(
-                            this::isSupportedFile
-                    )
-                    .filter(
-                            path ->
-                                    !isIgnored(path)
-                    )
-                    .forEach(
-                            path ->
-                                    analyzeFile(
-                                            path,
-                                            files
-                                    )
-                    );
+        long totalLines =
+                files.stream()
+                        .mapToLong(SourceFile::lines)
+                        .sum();
 
-        } catch (IOException ignored) {
-        }
-
-        int javaFiles = 0;
-        int webFiles = 0;
-        int configFiles = 0;
-        int totalLines = 0;
-
-        for (SourceFile file : files) {
-
-            totalLines +=
-                    file.lines();
-
-            String extension =
-                    extension(
-                            file.path()
-                    );
-
-            if ("java".equals(extension)) {
-
-                javaFiles++;
-
-            } else if (
-                    "html".equals(extension)
-                            || "css".equals(extension)
-                            || "js".equals(extension)
-            ) {
-
-                webFiles++;
-
-            } else {
-
-                configFiles++;
-            }
-        }
+        long totalBytes =
+                files.stream()
+                        .mapToLong(SourceFile::size)
+                        .sum();
 
         return new ProjectAnalysis(
                 files.size(),
-                javaFiles,
-                webFiles,
-                configFiles,
+                (int) javaFiles,
+                (int) uiFiles,
+                (int) webFiles,
                 totalLines,
+                totalBytes,
                 files
         );
     }
 
-    public synchronized List<SourceFile> findRelevantFiles(
+    public List<SourceFile> findRelevantFiles(
             String feature,
             String domain
     ) {
-
-        ProjectAnalysis analysis =
-                analyzeProject();
-
-        if (analysis.files().isEmpty()) {
-            return List.of();
-        }
+        List<SourceFile> files =
+                scanProject();
 
         String featureText =
-                normalize(
-                        feature
-                );
+                safe(feature)
+                        .toLowerCase(Locale.ROOT);
 
         String domainText =
-                normalize(
-                        domain
-                );
+                safe(domain)
+                        .toLowerCase(Locale.ROOT);
 
-        List<String> keywords =
+        Set<String> keywords =
                 buildKeywords(
                         featureText,
                         domainText
                 );
 
-        List<ScoredFile> scored =
-                new ArrayList<>();
-
-        for (SourceFile file :
-                analysis.files()) {
-
-            int score =
-                    calculateRelevance(
-                            file,
-                            keywords
-                    );
-
-            if (score > 0) {
-
-                scored.add(
+        return files.stream()
+                .map(file ->
                         new ScoredFile(
                                 file,
-                                score
+                                relevance(
+                                        file,
+                                        keywords,
+                                        featureText,
+                                        domainText
+                                )
                         )
-                );
-            }
-        }
-
-        scored.sort(
-                Comparator
-                        .comparingInt(
-                                ScoredFile::score
-                        )
-                        .reversed()
-                        .thenComparing(
-                                item ->
-                                        item.file()
-                                                .path()
-                        )
-        );
-
-        return scored.stream()
-                .limit(30)
-                .map(
-                        ScoredFile::file
                 )
-                .toList();
+                .filter(item ->
+                        item.score() > 0)
+                .sorted(
+                        Comparator
+                                .comparingDouble(
+                                        ScoredFile::score
+                                )
+                                .reversed()
+                )
+                .limit(30)
+                .map(ScoredFile::file)
+                .collect(Collectors.toList());
     }
 
-    public synchronized String readSource(
+    public String readSource(
             String relativePath
     ) {
-
         if (relativePath == null
                 || relativePath.isBlank()) {
-
             return "";
         }
 
         Path path =
-                Path.of(
-                        relativePath
-                ).normalize();
+                PROJECT_ROOT.resolve(relativePath)
+                        .normalize();
 
         if (!path.startsWith(
-                PROJECT_ROOT.normalize()
+                PROJECT_ROOT.toAbsolutePath()
         )) {
-
-            return "";
-        }
-
-        if (!Files.exists(path)
-                || !Files.isRegularFile(path)) {
-
             return "";
         }
 
         try {
+            if (!Files.exists(path)
+                    || !Files.isRegularFile(path)) {
+                return "";
+            }
 
-            long size =
-                    Files.size(path);
-
-            if (size > MAX_FILE_SIZE) {
+            if (Files.size(path)
+                    > MAX_FILE_SIZE) {
                 return "";
             }
 
@@ -225,82 +171,148 @@ public class CodeAnalysisEngine {
                     StandardCharsets.UTF_8
             );
 
-        } catch (IOException e) {
-
+        } catch (IOException ignored) {
             return "";
         }
     }
 
-    public synchronized List<String> findFilesContaining(
+    public List<SourceFile> findFilesContaining(
             String text
     ) {
+        String query =
+                safe(text)
+                        .toLowerCase(Locale.ROOT)
+                        .trim();
 
-        if (text == null
-                || text.isBlank()) {
-
+        if (query.isBlank()) {
             return List.of();
         }
 
-        String search =
-                text.toLowerCase(
-                        Locale.ROOT
-                );
+        return scanProject()
+                .stream()
+                .filter(file ->
+                        safe(file.contentPreview())
+                                .toLowerCase(Locale.ROOT)
+                                .contains(query))
+                .collect(Collectors.toList());
+    }
 
-        ProjectAnalysis analysis =
-                analyzeProject();
+    public List<SourceFile> getJavaFiles() {
+        return scanProject()
+                .stream()
+                .filter(file ->
+                        "java".equals(file.extension()))
+                .collect(Collectors.toList());
+    }
 
-        List<String> result =
+    public List<SourceFile> getUiFiles() {
+        return scanProject()
+                .stream()
+                .filter(file ->
+                        isUiFile(file.extension()))
+                .collect(Collectors.toList());
+    }
+
+    public List<SourceFile> getWebFiles() {
+        return scanProject()
+                .stream()
+                .filter(file ->
+                        isWebFile(file.extension()))
+                .collect(Collectors.toList());
+    }
+
+    public boolean isUiFile(
+            String extension
+    ) {
+        if (extension == null) {
+            return false;
+        }
+
+        return switch (
+                extension.toLowerCase(Locale.ROOT)
+        ) {
+            case "html",
+                 "css",
+                 "js" -> true;
+
+            default -> false;
+        };
+    }
+
+    public boolean isWebFile(
+            String extension
+    ) {
+        if (extension == null) {
+            return false;
+        }
+
+        return switch (
+                extension.toLowerCase(Locale.ROOT)
+        ) {
+            case "html",
+                 "css",
+                 "js",
+                 "json",
+                 "xml" -> true;
+
+            default -> false;
+        };
+    }
+
+    private List<SourceFile> scanProject() {
+        List<SourceFile> result =
                 new ArrayList<>();
 
-        for (SourceFile file :
-                analysis.files()) {
+        Path root =
+                PROJECT_ROOT.toAbsolutePath()
+                        .normalize();
 
-            if (file.contentPreview()
-                    .toLowerCase(
-                            Locale.ROOT
-                    )
-                    .contains(search)) {
+        try (Stream<Path> stream =
+                     Files.walk(root)) {
 
-                result.add(
-                        file.path()
-                );
-            }
+            stream
+                    .filter(Files::isRegularFile)
+                    .filter(path ->
+                            !isIgnored(path))
+                    .forEach(path -> {
+                        SourceFile file =
+                                inspectFile(
+                                        path,
+                                        root
+                                );
+
+                        if (file != null) {
+                            result.add(file);
+                        }
+                    });
+
+        } catch (IOException ignored) {
         }
 
         return result;
     }
 
-    public synchronized List<String> getJavaFiles() {
-
-        return analyzeProject()
-                .files()
-                .stream()
-                .filter(
-                        file ->
-                                "java".equals(
-                                        extension(
-                                                file.path()
-                                        )
-                                )
-                )
-                .map(
-                        SourceFile::path
-                )
-                .toList();
-    }
-
-    private void analyzeFile(
+    private SourceFile inspectFile(
             Path path,
-            List<SourceFile> result
+            Path root
     ) {
+        String extension =
+                getExtension(
+                        path.getFileName()
+                                .toString()
+                );
+
+        if (!SUPPORTED_EXTENSIONS
+                .contains(extension)) {
+            return null;
+        }
 
         try {
-
             long size =
                     Files.size(path);
 
             if (size > MAX_FILE_SIZE) {
-                return;
+                return null;
             }
 
             String content =
@@ -309,246 +321,42 @@ public class CodeAnalysisEngine {
                             StandardCharsets.UTF_8
                     );
 
-            int lines =
+            long lines =
                     content.isBlank()
                             ? 0
-                            : content.split(
-                                    "\\R",
-                                    -1
-                            ).length;
+                            : content.lines().count();
+
+            String relative =
+                    root.relativize(path)
+                            .toString()
+                            .replace('\\', '/');
 
             String preview =
-                    content.length() > 8000
-                            ? content.substring(
-                                    0,
-                                    8000
-                            )
+                    content.length() > 5000
+                            ? content.substring(0, 5000)
                             : content;
 
-            result.add(
-                    new SourceFile(
-                            path.toString(),
-                            extension(
-                                    path.toString()
-                            ),
-                            size,
-                            lines,
-                            preview
-                    )
+            return new SourceFile(
+                    relative,
+                    extension,
+                    size,
+                    lines,
+                    preview
             );
 
         } catch (IOException ignored) {
+            return null;
         }
-    }
-
-    private int calculateRelevance(
-            SourceFile file,
-            List<String> keywords
-    ) {
-
-        String path =
-                file.path()
-                        .toLowerCase(
-                                Locale.ROOT
-                        );
-
-        String content =
-                file.contentPreview()
-                        .toLowerCase(
-                                Locale.ROOT
-                        );
-
-        int score = 0;
-
-        for (String keyword :
-                keywords) {
-
-            if (keyword.isBlank()) {
-                continue;
-            }
-
-            if (path.contains(keyword)) {
-                score += 10;
-            }
-
-            if (content.contains(keyword)) {
-                score += 3;
-            }
-        }
-
-        String extension =
-                extension(
-                        file.path()
-                );
-
-        if ("java".equals(extension)) {
-            score += 2;
-        }
-
-        if ("html".equals(extension)
-                || "css".equals(extension)
-                || "js".equals(extension)) {
-
-            if (keywords.stream().anyMatch(
-                    keyword ->
-                            keyword.contains("ui")
-                                    || keyword.contains("voice")
-                                    || keyword.contains("image")
-                                    || keyword.contains("file")
-            )) {
-
-                score += 5;
-            }
-        }
-
-        return score;
-    }
-
-    private List<String> buildKeywords(
-            String feature,
-            String domain
-    ) {
-
-        List<String> keywords =
-                new ArrayList<>();
-
-        addWords(
-                keywords,
-                feature
-        );
-
-        addWords(
-                keywords,
-                domain
-        );
-
-        switch (domain) {
-
-            case "coding" -> {
-
-                keywords.add("service");
-                keywords.add("controller");
-                keywords.add("engine");
-                keywords.add("provider");
-            }
-
-            case "reasoning" -> {
-
-                keywords.add("ai");
-                keywords.add("prompt");
-                keywords.add("response");
-            }
-
-            case "research" -> {
-
-                keywords.add("web");
-                keywords.add("knowledge");
-                keywords.add("learning");
-            }
-
-            case "memory" -> {
-
-                keywords.add("memory");
-                keywords.add("conversation");
-                keywords.add("storage");
-            }
-
-            case "knowledge" -> {
-
-                keywords.add("knowledge");
-                keywords.add("evaluator");
-            }
-
-            default -> {
-            }
-        }
-
-        return keywords;
-    }
-
-    private void addWords(
-            List<String> result,
-            String text
-    ) {
-
-        if (text == null
-                || text.isBlank()) {
-
-            return;
-        }
-
-        String[] words =
-                text.split("\\s+");
-
-        for (String word :
-                words) {
-
-            String clean =
-                    word
-                            .replaceAll(
-                                    "[^a-zA-Z0-9]",
-                                    ""
-                            )
-                            .toLowerCase(
-                                    Locale.ROOT
-                            );
-
-            if (clean.length() >= 3) {
-
-                result.add(clean);
-            }
-        }
-    }
-
-    private boolean isSupportedFile(
-            Path path
-    ) {
-
-        String extension =
-                extension(
-                        path.toString()
-                );
-
-        return switch (extension) {
-
-            case "java",
-                 "html",
-                 "css",
-                 "js",
-                 "json",
-                 "xml",
-                 "properties",
-                 "yml",
-                 "yaml",
-                 "md" ->
-                    true;
-
-            default ->
-                    false;
-        };
     }
 
     private boolean isIgnored(
             Path path
     ) {
-
-        String value =
-                path.toString()
-                        .replace(
-                                '\\',
-                                '/'
-                        )
-                        .toLowerCase(
-                                Locale.ROOT
-                        );
-
-        for (String ignored :
-                IGNORED_DIRECTORIES) {
-
-            String marker =
-                    "/" + ignored + "/";
-
-            if (value.contains(marker)) {
+        for (Path part : path) {
+            if (IGNORED_DIRECTORIES
+                    .contains(
+                            part.toString()
+                    )) {
                 return true;
             }
         }
@@ -556,55 +364,246 @@ public class CodeAnalysisEngine {
         return false;
     }
 
-    private String extension(
-            String path
+    private double relevance(
+            SourceFile file,
+            Set<String> keywords,
+            String feature,
+            String domain
     ) {
+        String path =
+                safe(file.path())
+                        .toLowerCase(Locale.ROOT);
 
-        if (path == null) {
-            return "";
+        String preview =
+                safe(file.contentPreview())
+                        .toLowerCase(Locale.ROOT);
+
+        String extension =
+                safe(file.extension())
+                        .toLowerCase(Locale.ROOT);
+
+        double score = 0;
+
+        for (String keyword : keywords) {
+            if (keyword.isBlank()) {
+                continue;
+            }
+
+            if (path.contains(keyword)) {
+                score += 4;
+            }
+
+            if (preview.contains(keyword)) {
+                score += 2;
+            }
         }
 
-        int index =
-                path.lastIndexOf('.');
+        if (domain.contains("coding")) {
+            score += 2;
 
-        if (index < 0
-                || index == path.length() - 1) {
+            if ("java".equals(extension)) {
+                score += 4;
+            }
 
-            return "";
+            if (isUiFile(extension)) {
+                score += 4;
+            }
         }
 
-        return path.substring(
-                index + 1
-        ).toLowerCase(
-                Locale.ROOT
-        );
+        if (containsUiKeyword(feature)) {
+            if (isUiFile(extension)) {
+                score += 10;
+            }
+
+            if (path.contains("static")) {
+                score += 5;
+            }
+
+            if (path.contains("index")) {
+                score += 5;
+            }
+        }
+
+        if (containsBackendKeyword(feature)
+                && "java".equals(extension)) {
+            score += 8;
+        }
+
+        return score;
     }
 
-    private String normalize(
-            String text
+    private Set<String> buildKeywords(
+            String feature,
+            String domain
     ) {
+        Set<String> keywords =
+                new HashSet<>();
 
-        if (text == null) {
+        addTokens(
+                keywords,
+                feature
+        );
+
+        addTokens(
+                keywords,
+                domain
+        );
+
+        if (containsUiKeyword(feature)
+                || domain.contains("coding")) {
+
+            keywords.add("ui");
+            keywords.add("html");
+            keywords.add("css");
+            keywords.add("javascript");
+            keywords.add("static");
+            keywords.add("style");
+            keywords.add("button");
+            keywords.add("panel");
+            keywords.add("menu");
+            keywords.add("dialog");
+            keywords.add("modal");
+            keywords.add("input");
+            keywords.add("chat");
+        }
+
+        if (containsBackendKeyword(feature)) {
+            keywords.add("controller");
+            keywords.add("service");
+            keywords.add("repository");
+            keywords.add("api");
+        }
+
+        return keywords;
+    }
+
+    private void addTokens(
+            Set<String> target,
+            String value
+    ) {
+        for (String token :
+                safe(value).split("[^a-zA-Z0-9_]+")) {
+
+            if (token.length() >= 3) {
+                target.add(
+                        token.toLowerCase(
+                                Locale.ROOT
+                        )
+                );
+            }
+        }
+    }
+
+    private boolean containsUiKeyword(
+            String value
+    ) {
+        String text =
+                safe(value)
+                        .toLowerCase(Locale.ROOT);
+
+        String[] keywords = {
+                "ui",
+                "interface",
+                "frontend",
+                "front-end",
+                "html",
+                "css",
+                "javascript",
+                "layout",
+                "design",
+                "button",
+                "panel",
+                "theme",
+                "animation",
+                "responsive",
+                "mobile",
+                "chat",
+                "dashboard",
+                "settings",
+                "visual"
+        };
+
+        for (String keyword : keywords) {
+            if (text.contains(keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private boolean containsBackendKeyword(
+            String value
+    ) {
+        String text =
+                safe(value)
+                        .toLowerCase(Locale.ROOT);
+
+        String[] keywords = {
+                "backend",
+                "api",
+                "controller",
+                "service",
+                "database",
+                "memory",
+                "research",
+                "knowledge",
+                "reasoning"
+        };
+
+        for (String keyword : keywords) {
+            if (text.contains(keyword)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private String getExtension(
+            String filename
+    ) {
+        int index =
+                filename.lastIndexOf('.');
+
+        if (index < 0
+                || index == filename.length() - 1) {
             return "";
         }
 
-        return text
-                .toLowerCase(
-                        Locale.ROOT
-                )
-                .replaceAll(
-                        "[^a-zA-Z0-9]+",
-                        " "
-                )
-                .trim();
+        return filename
+                .substring(index + 1)
+                .toLowerCase(Locale.ROOT);
+    }
+
+    private String safe(String value) {
+        return value == null
+                ? ""
+                : value;
+    }
+
+    private record ScoredFile(
+            SourceFile file,
+            double score
+    ) {
+    }
+
+    public record SourceFile(
+            String path,
+            String extension,
+            long size,
+            long lines,
+            String contentPreview
+    ) {
     }
 
     public record ProjectAnalysis(
             int totalFiles,
             int javaFiles,
+            int uiFiles,
             int webFiles,
-            int configFiles,
-            int totalLines,
+            long totalLines,
+            long totalBytes,
             List<SourceFile> files
     ) {
 
@@ -612,33 +611,27 @@ public class CodeAnalysisEngine {
                 int totalFiles,
                 int javaFiles,
                 int webFiles,
-                int configFiles,
+                long totalLines,
+                long totalBytes,
                 List<SourceFile> files
         ) {
-
             this(
                     totalFiles,
                     javaFiles,
+                    (int) files.stream()
+                            .filter(file ->
+                                    file.extension()
+                                            .equals("html")
+                                    || file.extension()
+                                            .equals("css")
+                                    || file.extension()
+                                            .equals("js"))
+                            .count(),
                     webFiles,
-                    configFiles,
-                    0,
+                    totalLines,
+                    totalBytes,
                     files
             );
         }
-    }
-
-    public record SourceFile(
-            String path,
-            String extension,
-            long size,
-            int lines,
-            String contentPreview
-    ) {
-    }
-
-    private record ScoredFile(
-            SourceFile file,
-            int score
-    ) {
     }
 }
