@@ -11,14 +11,14 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
-import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 @Service
 public class EvolutionEngine {
 
-    private static final Path EVOLUTION_FILE =
+    private static final Path STATE_FILE =
             Path.of("blackwater-evolution.txt");
 
     private static final Path LOG_FILE =
@@ -27,51 +27,169 @@ public class EvolutionEngine {
     private final ImprovementEngine improvementEngine;
     private final BenchmarkEngine benchmarkEngine;
 
-    private final Map<Domain, DomainState> domains =
+    private final Map<Domain, DomainState> states =
             new EnumMap<>(Domain.class);
 
-    private boolean running = false;
-
-    private long totalPower = 0;
-
-    private long evolutionCycles = 0;
+    private boolean running = true;
 
     public EvolutionEngine(
             ImprovementEngine improvementEngine,
             BenchmarkEngine benchmarkEngine
     ) {
-        this.improvementEngine = improvementEngine;
-        this.benchmarkEngine = benchmarkEngine;
 
-        initializeDomains();
+        this.improvementEngine =
+                improvementEngine;
+
+        this.benchmarkEngine =
+                benchmarkEngine;
+
+        initializeDefaults();
         loadState();
     }
 
-    public synchronized void start() {
+    public synchronized EvolutionState getState() {
 
-        running = true;
+        List<DomainState> result =
+                new ArrayList<>();
+
+        for (Domain domain : Domain.values()) {
+
+            DomainState state =
+                    states.get(domain);
+
+            result.add(
+                    new DomainState(
+                            state.domain(),
+                            state.enabled(),
+                            state.priority(),
+                            state.power(),
+                            state.cycles(),
+                            state.lastBenchmark()
+                    )
+            );
+        }
+
+        return new EvolutionState(
+                running,
+                result
+        );
+    }
+
+    public synchronized EvolutionCycle evolveOnce() {
+
+        if (!running) {
+
+            return new EvolutionCycle(
+                    false,
+                    "",
+                    0,
+                    0,
+                    0,
+                    "Evolution is paused."
+            );
+        }
+
+        Domain target =
+                selectNextDomain();
+
+        DomainState state =
+                states.get(target);
+
+        int before =
+                safeBenchmark(target);
+
+        ImprovementEngine.ImprovementResult result;
+
+        try {
+
+            result =
+                    improvementEngine.improveDomain(
+                            target.name().toLowerCase(
+                                    Locale.ROOT
+                            )
+                    );
+
+        } catch (Exception e) {
+
+            state.cycles(
+                    state.cycles() + 1
+            );
+
+            state.lastBenchmark(before);
+
+            saveState();
+
+            return new EvolutionCycle(
+                    true,
+                    target.name(),
+                    before,
+                    before,
+                    0,
+                    "Improvement cycle failed."
+            );
+        }
+
+        int after =
+                Math.max(
+                        0,
+                        result.afterScore()
+                );
+
+        int improvement =
+                after - before;
+
+        state.cycles(
+                state.cycles() + 1
+        );
+
+        state.lastBenchmark(after);
+
+        if (improvement > 0) {
+
+            int gain =
+                    calculatePowerGain(
+                            state,
+                            improvement
+                    );
+
+            state.power(
+                    state.power() + gain
+            );
+        }
 
         saveState();
 
-        writeLog(
-                "Evolution started."
+        logCycle(
+                target,
+                before,
+                after,
+                improvement,
+                result.successful()
         );
+
+        return new EvolutionCycle(
+                true,
+                target.name(),
+                before,
+                after,
+                improvement,
+                result.message()
+        );
+    }
+
+    public synchronized void start() {
+        running = true;
+        saveState();
     }
 
     public synchronized void pause() {
-
         running = false;
-
         saveState();
-
-        writeLog(
-                "Evolution paused."
-        );
     }
 
-    public synchronized boolean isRunning() {
-
-        return running;
+    public synchronized void resume() {
+        running = true;
+        saveState();
     }
 
     public synchronized void setDomainEnabled(
@@ -86,8 +204,9 @@ public class EvolutionEngine {
             return;
         }
 
-        domains.get(parsed).enabled =
-                enabled;
+        states.get(parsed).enabled(
+                enabled
+        );
 
         saveState();
     }
@@ -104,255 +223,83 @@ public class EvolutionEngine {
             return;
         }
 
-        domains.get(parsed).priority =
+        states.get(parsed).priority(
                 Math.max(
                         0,
-                        Math.min(
-                                100,
-                                priority
-                        )
-                );
+                        priority
+                )
+        );
 
         saveState();
     }
 
-    public synchronized EvolutionSnapshot getStatus() {
+    private Domain selectNextDomain() {
 
-        Map<String, DomainSnapshot> result =
-                new LinkedHashMap<>();
-
-        for (Domain domain :
-                Domain.values()) {
-
-            DomainState state =
-                    domains.get(domain);
-
-            result.put(
-                    domain.name().toLowerCase(),
-                    new DomainSnapshot(
-                            state.enabled,
-                            state.priority,
-                            state.power,
-                            state.cycles,
-                            state.lastBenchmark
-                    )
-            );
-        }
-
-        return new EvolutionSnapshot(
-                totalPower,
-                running,
-                evolutionCycles,
-                result
-        );
-    }
-
-    public synchronized String evolveOnce() {
-
-        if (!running) {
-
-            return "Evolution is paused.";
-        }
-
-        DomainState target =
-                selectNextDomain();
-
-        if (target == null) {
-
-            return
-                    "No evolution domains are enabled.";
-        }
-
-        /*
-         * The improvement engine identifies the
-         * weakest capability and attempts to improve it.
-         */
-        ImprovementEngine.ImprovementResult result;
-
-        try {
-
-            result =
-                    improvementEngine
-                            .improveWeakestDomain();
-
-        } catch (Exception e) {
-
-            return
-                    "Evolution failed: "
-                            + e.getMessage();
-        }
-
-        String domainName =
-                result.domain();
-
-        Domain targetDomain =
-                parseDomain(domainName);
-
-        if (targetDomain == null) {
-
-            return
-                    "Evolution completed without "
-                            + "a valid target domain.";
-        }
-
-        DomainState state =
-                domains.get(targetDomain);
-
-        int before =
-                result.beforeScore();
-
-        int after =
-                result.afterScore();
-
-        int improvement =
-                after - before;
-
-        state.lastBenchmark =
-                after;
-
-        long gain =
-                calculatePowerGain(
-                        state,
-                        improvement,
-                        result.improved()
+        return states.values()
+                .stream()
+                .filter(
+                        DomainState::enabled
+                )
+                .min(
+                        Comparator
+                                .comparingInt(
+                                        DomainState::priority
+                                )
+                                .reversed()
+                                .thenComparingInt(
+                                        DomainState::cycles
+                                )
+                                .thenComparingInt(
+                                        DomainState::power
+                                )
+                )
+                .map(
+                        DomainState::domain
+                )
+                .orElse(
+                        Domain.KNOWLEDGE
                 );
-
-        if (gain > 0) {
-
-            long oldPower =
-                    state.power;
-
-            state.power += gain;
-
-            totalPower += gain;
-
-            state.cycles++;
-
-            evolutionCycles++;
-
-            saveState();
-
-            writeLog(
-                    "+"
-                            + gain
-                            + " "
-                            + targetDomain.name()
-                            + " Power | Benchmark "
-                            + before
-                            + " → "
-                            + after
-            );
-
-            return
-                    "Evolution successful."
-                            + System.lineSeparator()
-                            + "Domain: "
-                            + targetDomain.name()
-                            + System.lineSeparator()
-                            + "Benchmark: "
-                            + before
-                            + " → "
-                            + after
-                            + System.lineSeparator()
-                            + "Power: "
-                            + oldPower
-                            + " → "
-                            + state.power
-                            + System.lineSeparator()
-                            + "Gain: +"
-                            + gain;
-        }
-
-        state.cycles++;
-
-        evolutionCycles++;
-
-        saveState();
-
-        writeLog(
-                "No measurable improvement | "
-                        + targetDomain.name()
-                        + " | Benchmark "
-                        + before
-                        + " → "
-                        + after
-        );
-
-        return
-                "Evolution cycle completed."
-                        + System.lineSeparator()
-                        + "Domain: "
-                        + targetDomain.name()
-                        + System.lineSeparator()
-                        + "Benchmark: "
-                        + after
-                        + "/100"
-                        + System.lineSeparator()
-                        + "Power unchanged.";
     }
 
-    private long calculatePowerGain(
+    private int calculatePowerGain(
             DomainState state,
-            int improvement,
-            boolean improved
+            int improvement
     ) {
 
-        if (!improved
-                || improvement <= 0) {
-
-            return 0;
-        }
-
-        /*
-         * Power has no artificial upper limit.
-         *
-         * The benchmark is bounded to 100,
-         * but Power itself is open-ended.
-         */
-
-        long gain =
+        int gain =
                 Math.max(
                         1,
                         improvement
                 );
 
-        /*
-         * Higher-priority domains receive
-         * a slightly larger reward.
-         */
-
-        if (state.priority >= 90) {
-
+        if (state.priority() >= 90) {
             gain += 2;
-
-        } else if (state.priority >= 70) {
-
+        } else if (state.priority() >= 70) {
             gain += 1;
         }
 
         return gain;
     }
 
-    private DomainState selectNextDomain() {
+    private int safeBenchmark(
+            Domain domain
+    ) {
 
-        return domains.values()
-                .stream()
-                .filter(
-                        state ->
-                                state.enabled
-                )
-                .max(
-                        Comparator
-                                .comparingInt(
-                                        (DomainState state) ->
-                                                state.priority
-                                )
-                                .thenComparingLong(
-                                        state ->
-                                                -state.cycles
-                                )
-                )
-                .orElse(null);
+        try {
+
+            return benchmarkEngine
+                    .run(
+                            domain.name()
+                                    .toLowerCase(
+                                            Locale.ROOT
+                                    )
+                    )
+                    .score();
+
+        } catch (Exception ignored) {
+
+            return 0;
+        }
     }
 
     private Domain parseDomain(
@@ -361,7 +308,6 @@ public class EvolutionEngine {
 
         if (value == null
                 || value.isBlank()) {
-
             return null;
         }
 
@@ -369,120 +315,216 @@ public class EvolutionEngine {
 
             return Domain.valueOf(
                     value.trim()
-                            .toUpperCase()
+                            .toUpperCase(
+                                    Locale.ROOT
+                            )
             );
 
-        } catch (IllegalArgumentException e) {
+        } catch (Exception ignored) {
 
             return null;
         }
     }
 
-    private void initializeDomains() {
+    private void initializeDefaults() {
 
-        for (Domain domain :
-                Domain.values()) {
+        states.put(
+                Domain.KNOWLEDGE,
+                new DomainState(
+                        Domain.KNOWLEDGE,
+                        true,
+                        60,
+                        0,
+                        0,
+                        0
+                )
+        );
 
-            domains.put(
-                    domain,
-                    new DomainState(
-                            domain,
-                            true,
-                            50,
-                            0,
-                            0,
-                            0
-                    )
-            );
-        }
+        states.put(
+                Domain.REASONING,
+                new DomainState(
+                        Domain.REASONING,
+                        true,
+                        80,
+                        0,
+                        0,
+                        0
+                )
+        );
 
-        domains.get(
-                Domain.CODING
-        ).priority = 100;
+        states.put(
+                Domain.RESEARCH,
+                new DomainState(
+                        Domain.RESEARCH,
+                        true,
+                        70,
+                        0,
+                        0,
+                        0
+                )
+        );
 
-        domains.get(
-                Domain.REASONING
-        ).priority = 80;
+        states.put(
+                Domain.CODING,
+                new DomainState(
+                        Domain.CODING,
+                        true,
+                        100,
+                        0,
+                        0,
+                        0
+                )
+        );
 
-        domains.get(
-                Domain.RESEARCH
-        ).priority = 70;
-
-        domains.get(
-                Domain.KNOWLEDGE
-        ).priority = 60;
-
-        domains.get(
-                Domain.MEMORY
-        ).priority = 50;
+        states.put(
+                Domain.MEMORY,
+                new DomainState(
+                        Domain.MEMORY,
+                        true,
+                        50,
+                        0,
+                        0,
+                        0
+                )
+        );
     }
 
-    private void saveState() {
+    private void loadState() {
+
+        if (!Files.exists(STATE_FILE)) {
+            return;
+        }
 
         try {
 
             List<String> lines =
-                    new ArrayList<>();
+                    Files.readAllLines(
+                            STATE_FILE,
+                            StandardCharsets.UTF_8
+                    );
 
-            lines.add(
-                    "running="
-                            + running
-            );
+            for (String line : lines) {
 
-            lines.add(
-                    "totalPower="
-                            + totalPower
-            );
+                String[] parts =
+                        line.split(
+                                "\\|",
+                                -1
+                        );
 
-            lines.add(
-                    "evolutionCycles="
-                            + evolutionCycles
-            );
+                if (parts.length < 7) {
+                    continue;
+                }
 
-            for (Domain domain :
-                    Domain.values()) {
+                if ("RUNNING".equals(parts[0])) {
+
+                    running =
+                            Boolean.parseBoolean(
+                                    parts[1]
+                            );
+
+                    continue;
+                }
+
+                Domain domain;
+
+                try {
+
+                    domain =
+                            Domain.valueOf(
+                                    parts[0]
+                                            .toUpperCase(
+                                                    Locale.ROOT
+                                            )
+                            );
+
+                } catch (Exception ignored) {
+
+                    continue;
+                }
 
                 DomainState state =
-                        domains.get(domain);
+                        states.get(domain);
 
-                lines.add(
-                        "domain."
-                                + domain.name()
-                                + ".enabled="
-                                + state.enabled
+                if (state == null) {
+                    continue;
+                }
+
+                state.enabled(
+                        Boolean.parseBoolean(
+                                parts[1]
+                        )
                 );
 
-                lines.add(
-                        "domain."
-                                + domain.name()
-                                + ".priority="
-                                + state.priority
+                state.priority(
+                        parseInt(
+                                parts[2],
+                                state.priority()
+                        )
                 );
 
-                lines.add(
-                        "domain."
-                                + domain.name()
-                                + ".power="
-                                + state.power
+                state.power(
+                        parseInt(
+                                parts[3],
+                                state.power()
+                        )
                 );
 
-                lines.add(
-                        "domain."
-                                + domain.name()
-                                + ".cycles="
-                                + state.cycles
+                state.cycles(
+                        parseInt(
+                                parts[4],
+                                state.cycles()
+                        )
                 );
 
-                lines.add(
-                        "domain."
-                                + domain.name()
-                                + ".benchmark="
-                                + state.lastBenchmark
+                state.lastBenchmark(
+                        parseInt(
+                                parts[5],
+                                state.lastBenchmark()
+                        )
                 );
             }
 
+        } catch (Exception ignored) {
+        }
+    }
+
+    private void saveState() {
+
+        List<String> lines =
+                new ArrayList<>();
+
+        lines.add(
+                "RUNNING|"
+                        + running
+        );
+
+        for (Domain domain :
+                Domain.values()) {
+
+            DomainState state =
+                    states.get(domain);
+
+            lines.add(
+                    domain.name()
+                            + "|"
+                            + state.enabled()
+                            + "|"
+                            + state.priority()
+                            + "|"
+                            + state.power()
+                            + "|"
+                            + state.cycles()
+                            + "|"
+                            + state.lastBenchmark()
+                            + "|"
+                            + Instant.now()
+            );
+        }
+
+        try {
+
             Files.write(
-                    EVOLUTION_FILE,
+                    STATE_FILE,
                     lines,
                     StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE,
@@ -493,189 +535,33 @@ public class EvolutionEngine {
         }
     }
 
-    private void loadState() {
+    private void logCycle(
+            Domain domain,
+            int before,
+            int after,
+            int improvement,
+            boolean successful
+    ) {
 
-        if (!Files.exists(
-                EVOLUTION_FILE
-        )) {
-
-            saveState();
-
-            return;
-        }
+        String line =
+                Instant.now()
+                        + "|"
+                        + domain.name()
+                        + "|before="
+                        + before
+                        + "|after="
+                        + after
+                        + "|improvement="
+                        + improvement
+                        + "|successful="
+                        + successful
+                        + System.lineSeparator();
 
         try {
-
-            List<String> lines =
-                    Files.readAllLines(
-                            EVOLUTION_FILE,
-                            StandardCharsets.UTF_8
-                    );
-
-            for (String line :
-                    lines) {
-
-                if (line.startsWith(
-                        "running="
-                )) {
-
-                    running =
-                            Boolean.parseBoolean(
-                                    valueOf(line)
-                            );
-
-                } else if (line.startsWith(
-                        "totalPower="
-                )) {
-
-                    totalPower =
-                            parseLong(
-                                    valueOf(line),
-                                    0
-                            );
-
-                } else if (line.startsWith(
-                        "evolutionCycles="
-                )) {
-
-                    evolutionCycles =
-                            parseLong(
-                                    valueOf(line),
-                                    0
-                            );
-
-                } else {
-
-                    loadDomainValue(line);
-                }
-            }
-
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void loadDomainValue(
-            String line
-    ) {
-
-        for (Domain domain :
-                Domain.values()) {
-
-            String prefix =
-                    "domain."
-                            + domain.name();
-
-            if (!line.startsWith(
-                    prefix
-            )) {
-
-                continue;
-            }
-
-            DomainState state =
-                    domains.get(domain);
-
-            if (line.endsWith(
-                    ".enabled"
-            )) {
-
-                state.enabled =
-                        Boolean.parseBoolean(
-                                valueOf(line)
-                        );
-
-            } else if (line.endsWith(
-                    ".priority"
-            )) {
-
-                state.priority =
-                        (int) parseLong(
-                                valueOf(line),
-                                50
-                        );
-
-            } else if (line.endsWith(
-                    ".power"
-            )) {
-
-                state.power =
-                        parseLong(
-                                valueOf(line),
-                                0
-                        );
-
-            } else if (line.endsWith(
-                    ".cycles"
-            )) {
-
-                state.cycles =
-                        parseLong(
-                                valueOf(line),
-                                0
-                        );
-
-            } else if (line.endsWith(
-                    ".benchmark"
-            )) {
-
-                state.lastBenchmark =
-                        (int) parseLong(
-                                valueOf(line),
-                                0
-                        );
-            }
-        }
-    }
-
-    private String valueOf(
-            String line
-    ) {
-
-        int index =
-                line.indexOf('=');
-
-        if (index < 0) {
-            return "";
-        }
-
-        return line.substring(
-                index + 1
-        ).trim();
-    }
-
-    private long parseLong(
-            String value,
-            long fallback
-    ) {
-
-        try {
-
-            return Long.parseLong(
-                    value
-            );
-
-        } catch (Exception e) {
-
-            return fallback;
-        }
-    }
-
-    private void writeLog(
-            String message
-    ) {
-
-        try {
-
-            String entry =
-                    "["
-                            + Instant.now()
-                            + "] "
-                            + message
-                            + System.lineSeparator();
 
             Files.writeString(
                     LOG_FILE,
-                    entry,
+                    line,
                     StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND
@@ -685,8 +571,21 @@ public class EvolutionEngine {
         }
     }
 
-    public enum Domain {
+    private int parseInt(
+            String value,
+            int fallback
+    ) {
 
+        try {
+            return Integer.parseInt(
+                    value
+            );
+        } catch (Exception ignored) {
+            return fallback;
+        }
+    }
+
+    public enum Domain {
         KNOWLEDGE,
         REASONING,
         RESEARCH,
@@ -694,26 +593,21 @@ public class EvolutionEngine {
         MEMORY
     }
 
-    private static class DomainState {
+    public static class DomainState {
 
-        private final Domain domain;
-
+        private Domain domain;
         private boolean enabled;
-
         private int priority;
-
-        private long power;
-
-        private long cycles;
-
+        private int power;
+        private int cycles;
         private int lastBenchmark;
 
-        private DomainState(
+        public DomainState(
                 Domain domain,
                 boolean enabled,
                 int priority,
-                long power,
-                long cycles,
+                int power,
+                int cycles,
                 int lastBenchmark
         ) {
             this.domain = domain;
@@ -723,22 +617,75 @@ public class EvolutionEngine {
             this.cycles = cycles;
             this.lastBenchmark = lastBenchmark;
         }
+
+        public Domain domain() {
+            return domain;
+        }
+
+        public boolean enabled() {
+            return enabled;
+        }
+
+        public void enabled(
+                boolean enabled
+        ) {
+            this.enabled = enabled;
+        }
+
+        public int priority() {
+            return priority;
+        }
+
+        public void priority(
+                int priority
+        ) {
+            this.priority = priority;
+        }
+
+        public int power() {
+            return power;
+        }
+
+        public void power(
+                int power
+        ) {
+            this.power = power;
+        }
+
+        public int cycles() {
+            return cycles;
+        }
+
+        public void cycles(
+                int cycles
+        ) {
+            this.cycles = cycles;
+        }
+
+        public int lastBenchmark() {
+            return lastBenchmark;
+        }
+
+        public void lastBenchmark(
+                int lastBenchmark
+        ) {
+            this.lastBenchmark = lastBenchmark;
+        }
     }
 
-    public record DomainSnapshot(
-            boolean enabled,
-            int priority,
-            long power,
-            long cycles,
-            int lastBenchmark
+    public record EvolutionState(
+            boolean running,
+            List<DomainState> domains
     ) {
     }
 
-    public record EvolutionSnapshot(
-            long totalPower,
+    public record EvolutionCycle(
             boolean running,
-            long evolutionCycles,
-            Map<String, DomainSnapshot> domains
+            String domain,
+            int beforeScore,
+            int afterScore,
+            int improvement,
+            String message
     ) {
     }
 }
