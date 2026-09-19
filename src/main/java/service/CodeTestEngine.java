@@ -13,12 +13,32 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 @Service
 public class CodeTestEngine {
+
+    private static final long MAX_SOURCE_SIZE = 1_000_000;
+
+    private static final Pattern JAVA_PACKAGE =
+            Pattern.compile(
+                    "\\bpackage\\s+[a-zA-Z_][\\w]*(?:\\.[a-zA-Z_][\\w]*)*\\s*;"
+            );
+
+    private static final Pattern JAVA_TYPE =
+            Pattern.compile(
+                    "\\b(class|interface|enum|record)\\s+[A-Za-z_$][\\w$]*"
+            );
+
+    private static final Pattern FUNCTION_PATTERN =
+            Pattern.compile(
+                    "\\b(function|const|let|var|class)\\b"
+            );
 
     private final ImprovementSandbox sandbox;
     private final ImprovementVerifier verifier;
@@ -32,21 +52,18 @@ public class CodeTestEngine {
     }
 
     public TestResult test(String experimentId) {
+
         if (experimentId == null || experimentId.isBlank()) {
-            return new TestResult(
+            return failed(
                     null,
-                    false,
-                    0.0,
-                    List.of("Experiment ID is missing.")
+                    "Experiment ID is missing."
             );
         }
 
         if (!sandbox.exists(experimentId)) {
-            return new TestResult(
+            return failed(
                     experimentId,
-                    false,
-                    0.0,
-                    List.of("Sandbox experiment does not exist.")
+                    "Sandbox experiment does not exist."
             );
         }
 
@@ -59,20 +76,16 @@ public class CodeTestEngine {
         try {
             verification = verifier.verify(experimentId);
         } catch (Exception e) {
-            return new TestResult(
+            return failed(
                     experimentId,
-                    false,
-                    0.0,
-                    List.of("Verification failed: " + safeMessage(e))
+                    "Verification failed: " + safeMessage(e)
             );
         }
 
         if (verification == null || !verification.safe()) {
-            return new TestResult(
+            return failed(
                     experimentId,
-                    false,
-                    0.0,
-                    List.of("Safety verification failed.")
+                    "Safety verification failed."
             );
         }
 
@@ -81,31 +94,32 @@ public class CodeTestEngine {
         try {
             files = sandbox.inspect(experimentId);
         } catch (Exception e) {
-            return new TestResult(
+            return failed(
                     experimentId,
-                    false,
-                    0.0,
-                    List.of(
-                            "Could not inspect experiment: "
-                                    + safeMessage(e)
-                    )
+                    "Could not inspect experiment: "
+                            + safeMessage(e)
             );
         }
 
         if (files == null || files.isEmpty()) {
-            return new TestResult(
+            return failed(
                     experimentId,
-                    false,
-                    0.0,
-                    List.of("Experiment contains no generated files.")
+                    "Experiment contains no generated files."
             );
         }
 
+        Set<String> testedFiles = new HashSet<>();
+
         for (Map.Entry<String, String> entry : files.entrySet()) {
-            String file = entry.getKey();
+
+            String file = normalizePath(entry.getKey());
             String content = entry.getValue();
 
             if (!isProjectFile(file)) {
+                continue;
+            }
+
+            if (!testedFiles.add(file)) {
                 continue;
             }
 
@@ -125,56 +139,18 @@ public class CodeTestEngine {
                 passedTests++;
             } else {
                 errors.add(
-                        "Structure test failed: " + file
+                        "Syntax/structure test failed: " + file
                 );
             }
 
-            if (isJava(file)) {
-                totalTests++;
+            totalTests++;
 
-                if (javaStructureTest(content)) {
-                    passedTests++;
-                } else {
-                    errors.add(
-                            "Java structure test failed: " + file
-                    );
-                }
-            }
-
-            if (isHtml(file)) {
-                totalTests++;
-
-                if (htmlStructureTest(content)) {
-                    passedTests++;
-                } else {
-                    errors.add(
-                            "HTML structure test failed: " + file
-                    );
-                }
-            }
-
-            if (isCss(file)) {
-                totalTests++;
-
-                if (cssStructureTest(content)) {
-                    passedTests++;
-                } else {
-                    errors.add(
-                            "CSS structure test failed: " + file
-                    );
-                }
-            }
-
-            if (isJavaScript(file)) {
-                totalTests++;
-
-                if (javascriptStructureTest(content)) {
-                    passedTests++;
-                } else {
-                    errors.add(
-                            "JavaScript structure test failed: " + file
-                    );
-                }
+            if (qualityStructureTest(file, content)) {
+                passedTests++;
+            } else {
+                errors.add(
+                        "Quality structure test failed: " + file
+                );
             }
 
             totalTests++;
@@ -188,17 +164,13 @@ public class CodeTestEngine {
             }
         }
 
-        /*
-         * Compile generated Java files against the existing project.
-         */
         List<String> javaFiles =
-                files.keySet()
-                        .stream()
+                testedFiles.stream()
                         .filter(this::isJava)
-                        .filter(this::isProjectFile)
                         .toList();
 
         if (!javaFiles.isEmpty()) {
+
             totalTests++;
 
             JavaCompileResult compileResult =
@@ -227,16 +199,16 @@ public class CodeTestEngine {
                         : (double) passedTests / totalTests;
 
         String summary =
-                "Passed " +
-                        passedTests +
-                        " / " +
-                        totalTests +
-                        " tests. Score: " +
-                        String.format(
-                                Locale.ROOT,
-                                "%.3f",
-                                score
-                        );
+                "Passed "
+                        + passedTests
+                        + " / "
+                        + totalTests
+                        + " tests. Score: "
+                        + String.format(
+                        Locale.ROOT,
+                        "%.3f",
+                        score
+                );
 
         try {
             sandbox.recordResult(
@@ -260,6 +232,7 @@ public class CodeTestEngine {
             String experimentId,
             List<String> javaFiles
     ) {
+
         JavaCompiler compiler =
                 ToolProvider.getSystemJavaCompiler();
 
@@ -268,7 +241,7 @@ public class CodeTestEngine {
                     false,
                     List.of(
                             "Java compiler is unavailable. "
-                                    + "The application must run on a JDK."
+                                    + "Blackwater must run on a JDK."
                     )
             );
         }
@@ -313,6 +286,7 @@ public class CodeTestEngine {
         List<Path> sourcePaths = new ArrayList<>();
 
         for (String file : javaFiles) {
+
             Path source =
                     experimentRoot
                             .resolve(file)
@@ -358,6 +332,7 @@ public class CodeTestEngine {
                                 StandardCharsets.UTF_8
                         )
         ) {
+
             Iterable<? extends JavaFileObject> units =
                     fileManager.getJavaFileObjectsFromFiles(
                             sourcePaths
@@ -370,6 +345,7 @@ public class CodeTestEngine {
                     "-proc:none",
                     "-encoding",
                     "UTF-8",
+                    "-Xlint:none",
                     "-d",
                     compileOutput.toString()
             );
@@ -396,8 +372,7 @@ public class CodeTestEngine {
                 );
             }
 
-            List<String> errors =
-                    new ArrayList<>();
+            List<String> errors = new ArrayList<>();
 
             for (Diagnostic<? extends JavaFileObject> diagnostic :
                     diagnostics.getDiagnostics()) {
@@ -419,14 +394,14 @@ public class CodeTestEngine {
                                 .toString();
 
                 errors.add(
-                        "Java compile error in " +
-                                sourceName +
-                                " at line " +
-                                diagnostic.getLineNumber() +
-                                ": " +
-                                diagnostic.getMessage(
-                                        Locale.ROOT
-                                )
+                        "Java compile error in "
+                                + sourceName
+                                + " at line "
+                                + diagnostic.getLineNumber()
+                                + ": "
+                                + diagnostic.getMessage(
+                                Locale.ROOT
+                        )
                 );
             }
 
@@ -442,6 +417,7 @@ public class CodeTestEngine {
             );
 
         } catch (Exception e) {
+
             return new JavaCompileResult(
                     false,
                     List.of(
@@ -456,54 +432,93 @@ public class CodeTestEngine {
             String file,
             String content
     ) {
+
         if (content == null || content.isBlank()) {
             return false;
         }
 
-        if (content.length() > 1_000_000) {
+        if (content.length() > MAX_SOURCE_SIZE) {
+            return false;
+        }
+
+        if (!isSupportedFile(file)) {
             return false;
         }
 
         String lower =
                 content.toLowerCase(Locale.ROOT);
 
-        if (lower.contains("todo: implement")
-                || lower.contains("insert code here")
-                || lower.contains("your code here")
-                || lower.contains("implementation omitted")
-                || lower.contains("code omitted")) {
-            return false;
+        String[] unfinishedMarkers = {
+                "todo: implement",
+                "insert code here",
+                "your code here",
+                "implementation omitted",
+                "code omitted",
+                "implementation goes here",
+                "replace this with",
+                "coming soon"
+        };
+
+        for (String marker : unfinishedMarkers) {
+            if (lower.contains(marker)) {
+                return false;
+            }
         }
 
-        return isSupportedFile(file);
+        return true;
     }
 
     private boolean syntaxStructureTest(
             String file,
             String content
     ) {
-        if (content == null) {
+
+        if (content == null || content.isBlank()) {
             return false;
         }
 
-        if (isJava(file)
-                || isJavaScript(file)
-                || isCss(file)) {
-
-            return balanced(
+        if (isJava(file)) {
+            return balancedIgnoringStrings(
                     content,
                     '{',
                     '}'
             )
-                    && balanced(
+                    && balancedIgnoringStrings(
                     content,
                     '(',
                     ')'
             )
-                    && balanced(
+                    && balancedIgnoringStrings(
                     content,
                     '[',
                     ']'
+            )
+                    && !containsBrokenJava(content);
+        }
+
+        if (isJavaScript(file)) {
+            return balancedIgnoringStrings(
+                    content,
+                    '{',
+                    '}'
+            )
+                    && balancedIgnoringStrings(
+                    content,
+                    '(',
+                    ')'
+            )
+                    && balancedIgnoringStrings(
+                    content,
+                    '[',
+                    ']'
+            );
+        }
+
+        if (isCss(file)) {
+            return balancedIgnoringStrings(
+                    content,
+                    '{',
+                    '}'
             );
         }
 
@@ -514,66 +529,96 @@ public class CodeTestEngine {
         return true;
     }
 
-    private boolean javaStructureTest(
+    private boolean qualityStructureTest(
+            String file,
             String content
     ) {
-        if (content == null
-                || content.isBlank()) {
+
+        if (content == null || content.isBlank()) {
             return false;
         }
 
-        String trimmed =
-                content.trim();
-
-        boolean hasType =
-                trimmed.contains("class ")
-                        || trimmed.contains("record ")
-                        || trimmed.contains("interface ")
-                        || trimmed.contains("enum ");
-
-        if (!hasType) {
-            return false;
+        if (isJava(file)) {
+            return javaQualityTest(content);
         }
 
-        return !containsUnfinishedJava(
-                content
-        );
+        if (isHtml(file)) {
+            return htmlQualityTest(content);
+        }
+
+        if (isCss(file)) {
+            return cssQualityTest(content);
+        }
+
+        if (isJavaScript(file)) {
+            return javascriptQualityTest(content);
+        }
+
+        return true;
     }
 
-    private boolean htmlStructureTest(
+    private boolean javaQualityTest(
             String content
     ) {
-        if (content == null
-                || content.isBlank()) {
+
+        if (!JAVA_TYPE.matcher(content).find()) {
             return false;
         }
+
+        if (content.contains("System.out.println")
+                && content.length() > 500) {
+            return false;
+        }
+
+        if (content.contains("catch (Exception e)")
+                && content.contains(
+                "e.printStackTrace()"
+        )) {
+            return false;
+        }
+
+        return !containsBrokenJava(content);
+    }
+
+    private boolean htmlQualityTest(
+            String content
+    ) {
 
         String lower =
                 content.toLowerCase(Locale.ROOT);
 
-        if (!lower.contains("<html")
-                && !lower.contains("<!doctype")) {
+        boolean hasDocument =
+                lower.contains("<!doctype html")
+                        || lower.contains("<html");
+
+        if (!hasDocument) {
             return false;
         }
 
-        if (!lower.contains("<body")
-                && !lower.contains("<main")
-                && !lower.contains("<div")) {
+        if (!lower.contains("<body")) {
             return false;
         }
 
-        return balancedHtml(content);
+        if (lower.contains(
+                "<script src=\"\""
+        )) {
+            return false;
+        }
+
+        if (lower.contains(
+                "href=\"javascript:"
+        )) {
+            return false;
+        }
+
+        return true;
     }
 
-    private boolean cssStructureTest(
+    private boolean cssQualityTest(
             String content
     ) {
-        if (content == null
-                || content.isBlank()) {
-            return false;
-        }
 
-        if (!balanced(
+        if (!balancedIgnoringStrings(
                 content,
                 '{',
                 '}'
@@ -581,30 +626,46 @@ public class CodeTestEngine {
             return false;
         }
 
-        return !content
-                .replaceAll("\\s+", "")
-                .contains("{}");
-    }
+        String compact =
+                content.replaceAll(
+                        "\\s+",
+                        ""
+                );
 
-    private boolean javascriptStructureTest(
-            String content
-    ) {
-        if (content == null
-                || content.isBlank()) {
+        if (compact.contains("{}")) {
             return false;
         }
 
-        if (!balanced(
+        if (compact.contains(
+                "color:;"
+        )
+                || compact.contains(
+                "width:;"
+        )
+                || compact.contains(
+                "height:;"
+        )) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private boolean javascriptQualityTest(
+            String content
+    ) {
+
+        if (!balancedIgnoringStrings(
                 content,
                 '{',
                 '}'
         )
-                || !balanced(
+                || !balancedIgnoringStrings(
                 content,
                 '(',
                 ')'
         )
-                || !balanced(
+                || !balancedIgnoringStrings(
                 content,
                 '[',
                 ']'
@@ -615,15 +676,26 @@ public class CodeTestEngine {
         String lower =
                 content.toLowerCase(Locale.ROOT);
 
-        return !lower.contains("debugger;")
-                && !lower.contains(
+        if (lower.contains("debugger;")) {
+            return false;
+        }
+
+        if (lower.contains(
                 "javascript:javascript:"
-        );
+        )) {
+            return false;
+        }
+
+        return FUNCTION_PATTERN
+                .matcher(content)
+                .find()
+                || content.contains("=>");
     }
 
     private boolean safetyContentTest(
             String content
     ) {
+
         if (content == null) {
             return false;
         }
@@ -647,10 +719,13 @@ public class CodeTestEngine {
                 "private key",
                 "keylogger",
                 "steal cookie",
-                "credential theft"
+                "credential theft",
+                "disable security",
+                "bypass antivirus"
         };
 
         for (String blockedValue : blocked) {
+
             if (lower.contains(blockedValue)) {
                 return false;
             }
@@ -659,9 +734,10 @@ public class CodeTestEngine {
         return true;
     }
 
-    private boolean containsUnfinishedJava(
+    private boolean containsBrokenJava(
             String content
     ) {
+
         String lower =
                 content.toLowerCase(Locale.ROOT);
 
@@ -669,57 +745,105 @@ public class CodeTestEngine {
                 "throw new unsupportedoperationexception"
         )
                 || lower.contains(
-                "return null; // todo"
-        )
-                || lower.contains(
                 "todo implement"
         )
                 || lower.contains(
                 "implementation omitted"
+        )
+                || lower.contains(
+                "return null; // todo"
         );
     }
 
-    private boolean balanced(
+    private boolean balancedIgnoringStrings(
             String content,
             char opening,
             char closing
     ) {
+
         int depth = 0;
-        boolean inString = false;
-        boolean inChar = false;
+
+        boolean inDoubleString = false;
+        boolean inSingleString = false;
+        boolean inLineComment = false;
+        boolean inBlockComment = false;
         boolean escaped = false;
 
         for (int i = 0; i < content.length(); i++) {
+
             char c = content.charAt(i);
+
+            char next =
+                    i + 1 < content.length()
+                            ? content.charAt(i + 1)
+                            : '\0';
+
+            if (inLineComment) {
+
+                if (c == '\n' || c == '\r') {
+                    inLineComment = false;
+                }
+
+                continue;
+            }
+
+            if (inBlockComment) {
+
+                if (c == '*' && next == '/') {
+                    inBlockComment = false;
+                    i++;
+                }
+
+                continue;
+            }
 
             if (escaped) {
                 escaped = false;
                 continue;
             }
 
-            if ((inString || inChar)
+            if ((inDoubleString || inSingleString)
                     && c == '\\') {
                 escaped = true;
                 continue;
             }
 
-            if (!inChar && c == '"') {
-                inString = !inString;
+            if (!inSingleString
+                    && !inDoubleString
+                    && c == '/'
+                    && next == '/') {
+                inLineComment = true;
+                i++;
                 continue;
             }
 
-            if (!inString && c == '\'') {
-                inChar = !inChar;
+            if (!inSingleString
+                    && !inDoubleString
+                    && c == '/'
+                    && next == '*') {
+                inBlockComment = true;
+                i++;
                 continue;
             }
 
-            if (inString || inChar) {
+            if (!inSingleString && c == '"') {
+                inDoubleString = !inDoubleString;
+                continue;
+            }
+
+            if (!inDoubleString && c == '\'') {
+                inSingleString = !inSingleString;
+                continue;
+            }
+
+            if (inDoubleString || inSingleString) {
                 continue;
             }
 
             if (c == opening) {
                 depth++;
             } else if (c == closing) {
+
                 depth--;
 
                 if (depth < 0) {
@@ -729,13 +853,15 @@ public class CodeTestEngine {
         }
 
         return depth == 0
-                && !inString
-                && !inChar;
+                && !inDoubleString
+                && !inSingleString
+                && !inBlockComment;
     }
 
     private boolean balancedHtml(
             String content
     ) {
+
         String lower =
                 content.toLowerCase(Locale.ROOT);
 
@@ -745,16 +871,21 @@ public class CodeTestEngine {
                 "body",
                 "main",
                 "section",
+                "article",
+                "header",
+                "footer",
+                "nav",
                 "div",
                 "script",
                 "style"
         };
 
         for (String tag : tags) {
+
             int open =
-                    countOccurrences(
+                    countOpeningTags(
                             lower,
-                            "<" + tag
+                            tag
                     );
 
             int close =
@@ -771,10 +902,51 @@ public class CodeTestEngine {
         return true;
     }
 
+    private int countOpeningTags(
+            String value,
+            String tag
+    ) {
+
+        int count = 0;
+        int index = 0;
+
+        String target =
+                "<" + tag;
+
+        while ((index =
+                value.indexOf(
+                        target,
+                        index
+                )) >= 0) {
+
+            int after =
+                    index + target.length();
+
+            if (after >= value.length()) {
+                count++;
+                break;
+            }
+
+            char next =
+                    value.charAt(after);
+
+            if (Character.isWhitespace(next)
+                    || next == '>'
+                    || next == '/') {
+                count++;
+            }
+
+            index = after;
+        }
+
+        return count;
+    }
+
     private int countOccurrences(
             String value,
             String target
     ) {
+
         int count = 0;
         int index = 0;
 
@@ -794,35 +966,25 @@ public class CodeTestEngine {
     private boolean isProjectFile(
             String file
     ) {
+
         if (file == null) {
             return false;
         }
 
-        String normalized =
-                file.replace(
-                        '\\',
-                        '/'
-                );
-
-        return normalized.startsWith(
-                "src/main/"
-        )
-                || normalized.startsWith(
-                "src/test/"
-        );
+        return file.startsWith("src/main/")
+                || file.startsWith("src/test/");
     }
 
     private boolean isSupportedFile(
             String file
     ) {
+
         if (file == null) {
             return false;
         }
 
         String lower =
-                file.toLowerCase(
-                        Locale.ROOT
-                );
+                file.toLowerCase(Locale.ROOT);
 
         return lower.endsWith(".java")
                 || lower.endsWith(".html")
@@ -836,45 +998,56 @@ public class CodeTestEngine {
                 || lower.endsWith(".md");
     }
 
-    private boolean isJava(
-            String file
-    ) {
+    private boolean isJava(String file) {
         return file != null
-                && file.toLowerCase(
-                Locale.ROOT
-        ).endsWith(".java");
+                && file.endsWith(".java");
     }
 
-    private boolean isHtml(
-            String file
-    ) {
+    private boolean isHtml(String file) {
         return file != null
-                && file.toLowerCase(
-                Locale.ROOT
-        ).endsWith(".html");
+                && file.endsWith(".html");
     }
 
-    private boolean isCss(
-            String file
-    ) {
+    private boolean isCss(String file) {
         return file != null
-                && file.toLowerCase(
-                Locale.ROOT
-        ).endsWith(".css");
+                && file.endsWith(".css");
     }
 
-    private boolean isJavaScript(
+    private boolean isJavaScript(String file) {
+        return file != null
+                && file.endsWith(".js");
+    }
+
+    private String normalizePath(
             String file
     ) {
-        return file != null
-                && file.toLowerCase(
-                Locale.ROOT
-        ).endsWith(".js");
+
+        if (file == null) {
+            return "";
+        }
+
+        return file
+                .replace('\\', '/')
+                .replaceAll("^/+", "");
+    }
+
+    private TestResult failed(
+            String experimentId,
+            String error
+    ) {
+
+        return new TestResult(
+                experimentId,
+                false,
+                0.0,
+                List.of(error)
+        );
     }
 
     private String safeMessage(
             Exception e
     ) {
+
         if (e == null
                 || e.getMessage() == null) {
             return "unknown error";
