@@ -21,130 +21,221 @@ public class AttachmentController {
         this.attachmentService = attachmentService;
     }
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ResponseEntity<?> upload(@RequestParam("file") MultipartFile file) {
+    @PostMapping(
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<?> upload(
+            @RequestParam("file") MultipartFile file
+    ) {
         try {
-            AttachmentService.Attachment attachment = attachmentService.save(file);
+            AttachmentService.Attachment attachment =
+                    attachmentService.save(file);
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "id", attachment.id(),
-                    "name", attachment.originalName(),
-                    "type", attachment.type(),
-                    "size", attachment.size(),
-                    "contentType", attachment.contentType(),
-                    "url", "/api/attachments/" + attachment.id()
-            ));
+            return ResponseEntity.ok(attachment);
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(
+                    Map.of(
+                            "error",
+                            e.getMessage() == null
+                                    ? "Invalid file."
+                                    : e.getMessage()
+                    )
+            );
+
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage() == null ? "Upload failed" : e.getMessage()
-            ));
+            return ResponseEntity.internalServerError().body(
+                    Map.of(
+                            "error",
+                            "Could not save attachment."
+                    )
+            );
         }
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<?> get(@PathVariable String id) {
+    public ResponseEntity<?> download(
+            @PathVariable String id
+    ) {
         try {
-            AttachmentService.Attachment attachment = attachmentService.get(id);
-            byte[] data = attachmentService.readBytes(id);
+            AttachmentService.AttachmentInfo info =
+                    attachmentService.get(id);
 
-            String contentType = attachment.contentType();
+            byte[] data =
+                    attachmentService.readBytes(id);
 
-            MediaType mediaType;
-            try {
-                mediaType = MediaType.parseMediaType(contentType);
-            } catch (Exception e) {
-                mediaType = MediaType.APPLICATION_OCTET_STREAM;
-            }
+            String contentType =
+                    info.contentType() == null
+                            || info.contentType().isBlank()
+                            ? MediaType.APPLICATION_OCTET_STREAM_VALUE
+                            : info.contentType();
 
-            ContentDisposition disposition;
+            HttpHeaders headers =
+                    new HttpHeaders();
 
-            if ("image".equalsIgnoreCase(attachment.type())) {
-                disposition = ContentDisposition.inline()
-                        .filename(attachment.originalName(), StandardCharsets.UTF_8)
-                        .build();
-            } else {
-                disposition = ContentDisposition.attachment()
-                        .filename(attachment.originalName(), StandardCharsets.UTF_8)
-                        .build();
-            }
+            headers.setContentType(
+                    MediaType.parseMediaType(contentType)
+            );
 
-            return ResponseEntity.ok()
-                    .contentType(mediaType)
-                    .contentLength(data.length)
-                    .header(HttpHeaders.CONTENT_DISPOSITION, disposition.toString())
+            headers.setContentLength(data.length);
+
+            ContentDisposition disposition =
+                    info.type().equals("image")
+                            ? ContentDisposition.inline()
+                            .filename(
+                                    info.originalName(),
+                                    StandardCharsets.UTF_8
+                            )
+                            .build()
+                            : ContentDisposition.attachment()
+                            .filename(
+                                    info.originalName(),
+                                    StandardCharsets.UTF_8
+                            )
+                            .build();
+
+            headers.setContentDisposition(
+                    disposition
+            );
+
+            return ResponseEntity
+                    .ok()
+                    .headers(headers)
                     .body(data);
 
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity
+                    .badRequest()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    e.getMessage() == null
+                                            ? "Invalid attachment."
+                                            : e.getMessage()
+                            )
+                    );
+
         } catch (Exception e) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity
+                    .notFound()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    "Attachment not found."
+                            )
+                    );
         }
     }
 
     @GetMapping("/{id}/info")
-    public ResponseEntity<?> info(@PathVariable String id) {
+    public ResponseEntity<?> info(
+            @PathVariable String id
+    ) {
         try {
-            AttachmentService.AttachmentInfo info = attachmentService.get(id);
+            return ResponseEntity.ok(
+                    attachmentService.get(id)
+            );
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "id", info.id(),
-                    "name", info.originalName(),
-                    "type", info.type(),
-                    "size", info.size(),
-                    "contentType", info.contentType()
-            ));
         } catch (Exception e) {
-            return ResponseEntity.notFound().body(Map.of(
-                    "success", false,
-                    "error", "Attachment not found"
-            ));
+            return ResponseEntity
+                    .notFound()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    "Attachment not found."
+                            )
+                    );
         }
     }
 
-    @GetMapping("/{id}/text")
-    public ResponseEntity<?> text(@PathVariable String id) {
+    @GetMapping(
+            value = "/{id}/text",
+            produces = MediaType.TEXT_PLAIN_VALUE
+    )
+    public ResponseEntity<?> text(
+            @PathVariable String id
+    ) {
         try {
             if (!attachmentService.isText(id)) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "error", "This attachment is not a text file"
-                ));
+                return ResponseEntity
+                        .badRequest()
+                        .body("Attachment is not a text file.");
             }
 
-            String content = attachmentService.readText(id);
+            return ResponseEntity.ok(
+                    attachmentService.readText(id)
+            );
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "id", id,
-                    "content", content
-            ));
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage() == null ? "Unable to read file" : e.getMessage()
-            ));
+            return ResponseEntity
+                    .notFound()
+                    .body("Attachment not found.");
+        }
+    }
+
+    @GetMapping(
+            value = "/{id}/base64",
+            produces = MediaType.TEXT_PLAIN_VALUE
+    )
+    public ResponseEntity<?> base64(
+            @PathVariable String id
+    ) {
+        try {
+            if (!attachmentService.isImage(id)) {
+                return ResponseEntity
+                        .badRequest()
+                        .body("Attachment is not an image.");
+            }
+
+            return ResponseEntity.ok(
+                    attachmentService.readBase64(id)
+            );
+
+        } catch (Exception e) {
+            return ResponseEntity
+                    .notFound()
+                    .body("Attachment not found.");
         }
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> delete(@PathVariable String id) {
+    public ResponseEntity<?> delete(
+            @PathVariable String id
+    ) {
         try {
-            boolean deleted = attachmentService.delete(id);
+            boolean deleted =
+                    attachmentService.delete(id);
 
             if (!deleted) {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity
+                        .notFound()
+                        .body(
+                                Map.of(
+                                        "error",
+                                        "Attachment not found."
+                                )
+                        );
             }
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "id", id
-            ));
+            return ResponseEntity.ok(
+                    Map.of(
+                            "deleted",
+                            true,
+                            "id",
+                            id
+                    )
+            );
+
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage() == null ? "Delete failed" : e.getMessage()
-            ));
+            return ResponseEntity
+                    .internalServerError()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    "Could not delete attachment."
+                            )
+                    );
         }
     }
 }
