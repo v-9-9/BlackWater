@@ -9,42 +9,42 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class BenchmarkHistory {
 
     private static final Path HISTORY_FILE =
-            Path.of(
-                    "blackwater-benchmark-history.txt"
-            );
+            Path.of("blackwater-benchmark-history.txt");
 
     public synchronized void record(
-            BenchmarkEngine.BenchmarkSummary summary
+            double averageScore,
+            Map<String, Double> domainScores
     ) {
-
-        if (summary == null) {
-            return;
-        }
+        Map<String, Double> scores =
+                domainScores == null
+                        ? Map.of()
+                        : domainScores;
 
         String line =
                 Instant.now()
                         + "|"
-                        + summary.averageScore()
+                        + averageScore
                         + "|"
-                        + summary.knowledge().score()
+                        + scores.getOrDefault("KNOWLEDGE", 0.0)
                         + "|"
-                        + summary.reasoning().score()
+                        + scores.getOrDefault("REASONING", 0.0)
                         + "|"
-                        + summary.research().score()
+                        + scores.getOrDefault("RESEARCH", 0.0)
                         + "|"
-                        + summary.coding().score()
+                        + scores.getOrDefault("CODING", 0.0)
                         + "|"
-                        + summary.memory().score()
+                        + scores.getOrDefault("MEMORY", 0.0)
                         + System.lineSeparator();
 
         try {
-
             Files.writeString(
                     HISTORY_FILE,
                     line,
@@ -52,13 +52,11 @@ public class BenchmarkHistory {
                     StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND
             );
-
         } catch (IOException ignored) {
         }
     }
 
-    public synchronized List<HistoryEntry>
-    getHistory() {
+    public synchronized List<HistoryEntry> getHistory() {
 
         if (!Files.exists(HISTORY_FILE)) {
             return List.of();
@@ -68,7 +66,6 @@ public class BenchmarkHistory {
                 new ArrayList<>();
 
         try {
-
             List<String> lines =
                     Files.readAllLines(
                             HISTORY_FILE,
@@ -76,9 +73,7 @@ public class BenchmarkHistory {
                     );
 
             for (String line : lines) {
-
-                HistoryEntry entry =
-                        parse(line);
+                HistoryEntry entry = parse(line);
 
                 if (entry != null) {
                     result.add(entry);
@@ -91,8 +86,7 @@ public class BenchmarkHistory {
         return result;
     }
 
-    public synchronized HistoryEntry
-    getLatest() {
+    public synchronized HistoryEntry getLatest() {
 
         List<HistoryEntry> history =
                 getHistory();
@@ -101,31 +95,27 @@ public class BenchmarkHistory {
             return null;
         }
 
-        return history.get(
-                history.size() - 1
-        );
+        return history.get(history.size() - 1);
     }
 
-    public synchronized int
-    getBestAverage() {
+    public synchronized double getBestAverage() {
 
         return getHistory()
                 .stream()
-                .mapToInt(
+                .mapToDouble(
                         HistoryEntry::averageScore
                 )
                 .max()
-                .orElse(0);
+                .orElse(0.0);
     }
 
-    public synchronized int
-    getPreviousAverage() {
+    public synchronized double getPreviousAverage() {
 
         List<HistoryEntry> history =
                 getHistory();
 
         if (history.size() < 2) {
-            return 0;
+            return 0.0;
         }
 
         return history.get(
@@ -133,79 +123,56 @@ public class BenchmarkHistory {
         ).averageScore();
     }
 
-    public synchronized int
-    getImprovementFromPrevious() {
+    public synchronized double getImprovementFromPrevious() {
 
         HistoryEntry latest =
                 getLatest();
 
         if (latest == null) {
-            return 0;
+            return 0.0;
         }
 
         return latest.averageScore()
                 - getPreviousAverage();
     }
 
-    private HistoryEntry parse(
-            String line
-    ) {
+    private HistoryEntry parse(String line) {
 
-        if (line == null
-                || line.isBlank()) {
+        if (line == null || line.isBlank()) {
             return null;
         }
 
         String[] parts =
-                line.split(
-                        "\\|",
-                        -1
-                );
+                line.split("\\|", -1);
 
         if (parts.length < 7) {
             return null;
         }
 
         try {
-
             return new HistoryEntry(
-                    Instant.parse(
-                            parts[0]
-                    ),
-                    Integer.parseInt(
-                            parts[1]
-                    ),
-                    Integer.parseInt(
-                            parts[2]
-                    ),
-                    Integer.parseInt(
-                            parts[3]
-                    ),
-                    Integer.parseInt(
-                            parts[4]
-                    ),
-                    Integer.parseInt(
-                            parts[5]
-                    ),
-                    Integer.parseInt(
-                            parts[6]
-                    )
+                    Instant.parse(parts[0]),
+                    Double.parseDouble(parts[1]),
+                    Double.parseDouble(parts[2]),
+                    Double.parseDouble(parts[3]),
+                    Double.parseDouble(parts[4]),
+                    Double.parseDouble(parts[5]),
+                    Double.parseDouble(parts[6])
             );
 
         } catch (Exception ignored) {
-
             return null;
         }
     }
 
     public record HistoryEntry(
             Instant timestamp,
-            int averageScore,
-            int knowledgeScore,
-            int reasoningScore,
-            int researchScore,
-            int codingScore,
-            int memoryScore
+            double averageScore,
+            double knowledgeScore,
+            double reasoningScore,
+            double researchScore,
+            double codingScore,
+            double memoryScore
     ) {
     }
 }
