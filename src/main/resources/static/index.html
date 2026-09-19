@@ -40,7 +40,8 @@
 
         button,
         textarea,
-        select {
+        select,
+        input {
             font-family: inherit;
         }
 
@@ -54,8 +55,6 @@
             display: flex;
             overflow: hidden;
         }
-
-        /* SIDEBAR */
 
         .sidebar {
             width: 270px;
@@ -156,8 +155,6 @@
             background: var(--panel-hover);
         }
 
-        /* MAIN */
-
         .main {
             flex: 1;
             min-width: 0;
@@ -204,8 +201,6 @@
         .topbar-name {
             font-weight: 600;
         }
-
-        /* MESSAGES */
 
         .messages {
             flex: 1;
@@ -267,7 +262,32 @@
             color: #d4d4da;
         }
 
-        /* INPUT */
+        .message-attachments {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .message-attachment {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 280px;
+            padding: 7px 9px;
+            border: 1px solid var(--border);
+            background: var(--panel);
+            border-radius: 9px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+
+        .message-attachment img {
+            width: 34px;
+            height: 34px;
+            object-fit: cover;
+            border-radius: 7px;
+        }
 
         .input-area {
             flex-shrink: 0;
@@ -317,11 +337,94 @@
             background: #1d1d24;
         }
 
+        .attachment-list {
+            display: none;
+            flex-wrap: wrap;
+            gap: 7px;
+            margin-bottom: 8px;
+        }
+
+        .attachment-list.has-files {
+            display: flex;
+        }
+
+        .attachment-chip {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            max-width: 280px;
+            min-height: 48px;
+            padding: 6px 8px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 11px;
+        }
+
+        .attachment-preview {
+            width: 36px;
+            height: 36px;
+            border-radius: 7px;
+            object-fit: cover;
+            flex-shrink: 0;
+            background: #202027;
+        }
+
+        .attachment-file-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 7px;
+            background: #202027;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 13px;
+            color: var(--muted);
+            flex-shrink: 0;
+        }
+
+        .attachment-info {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 3px;
+        }
+
+        .attachment-name {
+            max-width: 190px;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            font-size: 12px;
+        }
+
+        .attachment-size {
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .remove-attachment {
+            width: 24px;
+            height: 24px;
+            border: 0;
+            border-radius: 7px;
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 17px;
+            flex-shrink: 0;
+        }
+
+        .remove-attachment:hover {
+            background: #25252d;
+            color: white;
+        }
+
         .input-box {
             width: 100%;
             display: flex;
             align-items: flex-end;
-            gap: 9px;
+            gap: 7px;
             background: var(--panel);
             border: 1px solid var(--border);
             border-radius: 16px;
@@ -347,6 +450,35 @@
             color: #70707a;
         }
 
+        .attach-button {
+            flex-shrink: 0;
+            width: 45px;
+            height: 45px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: #111116;
+            color: var(--muted);
+            cursor: pointer;
+            font-size: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .attach-button:hover {
+            background: var(--panel-hover);
+            color: white;
+        }
+
+        .attach-button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
         .send {
             flex-shrink: 0;
             width: 45px;
@@ -367,8 +499,6 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
-
-        /* SETTINGS */
 
         .settings-overlay {
             position: fixed;
@@ -477,8 +607,6 @@
         .danger:hover {
             background: #211515;
         }
-
-        /* EVOLUTION */
 
         .evolution-status {
             display: flex;
@@ -642,27 +770,12 @@
             border-color: #315a38;
         }
 
-        .evolution-log {
-            max-height: 150px;
-            overflow-y: auto;
-            background: #0b0b0f;
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            padding: 10px;
-            font-family: monospace;
-            font-size: 10px;
-            color: var(--muted);
-            white-space: pre-wrap;
-        }
-
         .evolution-message {
             color: var(--muted);
             font-size: 12px;
             margin-top: 9px;
             min-height: 16px;
         }
-
-        /* MOBILE */
 
         @media (max-width: 700px) {
 
@@ -735,6 +848,15 @@
 
             .power-summary {
                 grid-template-columns: 1fr 1fr;
+            }
+
+            .attachment-chip {
+                max-width: 100%;
+                flex: 1 1 100%;
+            }
+
+            .attachment-name {
+                max-width: calc(100vw - 150px);
             }
         }
     </style>
@@ -867,7 +989,30 @@
 
                 </div>
 
+                <div
+                    class="attachment-list"
+                    id="attachmentList"
+                ></div>
+
+                <input
+                    type="file"
+                    id="fileInput"
+                    multiple
+                    accept="image/*,.txt,.md,.json,.xml,.csv,.java,.html,.css,.js,.ts,.jsx,.tsx,.properties,.yml,.yaml,.log,.sql,.py,.c,.cpp,.h,.hpp,.sh,.bat,.pdf,.doc,.docx"
+                    onchange="handleFiles(event)"
+                >
+
                 <div class="input-box">
+
+                    <button
+                        class="attach-button"
+                        id="attachButton"
+                        onclick="openFilePicker()"
+                        aria-label="Attach files"
+                        title="Attach files"
+                    >
+                        +
+                    </button>
 
                     <textarea
                         id="message"
@@ -895,8 +1040,6 @@
     </main>
 
 </div>
-
-<!-- SETTINGS -->
 
 <div
     class="settings-overlay"
@@ -976,8 +1119,6 @@
             </select>
 
         </div>
-
-        <!-- EVOLUTION -->
 
         <div class="setting-section">
 
@@ -1135,6 +1276,8 @@
 
     let evolutionState = null;
 
+    let attachments = [];
+
 
     function selectMode(mode) {
 
@@ -1181,6 +1324,312 @@
     }
 
 
+    function openFilePicker() {
+
+        if (sending) {
+            return;
+        }
+
+        document
+            .getElementById("fileInput")
+            .click();
+    }
+
+
+    async function handleFiles(event) {
+
+        const files =
+            Array.from(event.target.files || []);
+
+        if (!files.length) {
+            return;
+        }
+
+        const availableSlots =
+            10 - attachments.length;
+
+        if (availableSlots <= 0) {
+            alert("Maximum 10 attachments.");
+            event.target.value = "";
+            return;
+        }
+
+        const selected =
+            files.slice(0, availableSlots);
+
+        const attachButton =
+            document.getElementById("attachButton");
+
+        attachButton.disabled = true;
+
+        try {
+
+            for (const file of selected) {
+
+                await uploadAttachment(file);
+            }
+
+        } catch (error) {
+
+            console.error(error);
+
+        } finally {
+
+            attachButton.disabled = false;
+
+            event.target.value = "";
+        }
+    }
+
+
+    async function uploadAttachment(file) {
+
+        const formData =
+            new FormData();
+
+        formData.append(
+            "file",
+            file
+        );
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/attachments",
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(
+                    result.error
+                    || "Upload failed"
+                );
+            }
+
+            attachments.push({
+                id: result.id,
+                name: result.name,
+                type: result.type,
+                size: Number(result.size || file.size),
+                contentType:
+                    result.contentType
+                    || file.type
+                    || "application/octet-stream",
+                url: result.url
+            });
+
+            renderAttachments();
+
+        } catch (error) {
+
+            console.error(error);
+
+            alert(
+                "Could not upload "
+                + file.name
+                + "."
+            );
+        }
+    }
+
+
+    function renderAttachments() {
+
+        const container =
+            document.getElementById(
+                "attachmentList"
+            );
+
+        container.innerHTML = "";
+
+        container.classList.toggle(
+            "has-files",
+            attachments.length > 0
+        );
+
+        attachments.forEach(
+            (attachment, index) => {
+
+                const chip =
+                    document.createElement("div");
+
+                chip.className =
+                    "attachment-chip";
+
+                if (
+                    attachment.type === "image"
+                ) {
+
+                    const image =
+                        document.createElement("img");
+
+                    image.className =
+                        "attachment-preview";
+
+                    image.src =
+                        attachment.url;
+
+                    image.alt =
+                        attachment.name;
+
+                    chip.appendChild(image);
+
+                } else {
+
+                    const icon =
+                        document.createElement("div");
+
+                    icon.className =
+                        "attachment-file-icon";
+
+                    icon.textContent =
+                        getFileExtension(
+                            attachment.name
+                        ).toUpperCase()
+                        || "FILE";
+
+                    chip.appendChild(icon);
+                }
+
+                const info =
+                    document.createElement("div");
+
+                info.className =
+                    "attachment-info";
+
+                const name =
+                    document.createElement("div");
+
+                name.className =
+                    "attachment-name";
+
+                name.textContent =
+                    attachment.name;
+
+                const size =
+                    document.createElement("div");
+
+                size.className =
+                    "attachment-size";
+
+                size.textContent =
+                    formatFileSize(
+                        attachment.size
+                    );
+
+                info.appendChild(name);
+                info.appendChild(size);
+
+                const remove =
+                    document.createElement("button");
+
+                remove.className =
+                    "remove-attachment";
+
+                remove.type =
+                    "button";
+
+                remove.textContent =
+                    "×";
+
+                remove.title =
+                    "Remove attachment";
+
+                remove.onclick =
+                    () =>
+                        removeAttachment(index);
+
+                chip.appendChild(info);
+                chip.appendChild(remove);
+
+                container.appendChild(chip);
+            }
+        );
+    }
+
+
+    async function removeAttachment(index) {
+
+        const attachment =
+            attachments[index];
+
+        if (!attachment) {
+            return;
+        }
+
+        attachments.splice(
+            index,
+            1
+        );
+
+        renderAttachments();
+
+        try {
+
+            await fetch(
+                "/api/attachments/"
+                + encodeURIComponent(
+                    attachment.id
+                ),
+                {
+                    method: "DELETE"
+                }
+            );
+
+        } catch (error) {
+
+            console.error(error);
+        }
+    }
+
+
+    function getFileExtension(name) {
+
+        if (!name || !name.includes(".")) {
+            return "";
+        }
+
+        return name
+            .split(".")
+            .pop()
+            .substring(0, 5);
+    }
+
+
+    function formatFileSize(bytes) {
+
+        const size =
+            Number(bytes || 0);
+
+        if (size < 1024) {
+            return size + " B";
+        }
+
+        if (size < 1024 * 1024) {
+            return (
+                size / 1024
+            ).toFixed(1) + " KB";
+        }
+
+        if (size < 1024 * 1024 * 1024) {
+            return (
+                size / (1024 * 1024)
+            ).toFixed(1) + " MB";
+        }
+
+        return (
+            size / (1024 * 1024 * 1024)
+        ).toFixed(1) + " GB";
+    }
+
+
     async function newChat() {
 
         try {
@@ -1201,9 +1650,12 @@
             const data =
                 await response.json();
 
-            currentConversationId = data.id;
+            currentConversationId =
+                data.id;
 
             clearMessages();
+
+            await clearAttachments();
 
             await loadConversations();
 
@@ -1216,7 +1668,6 @@
         } catch (error) {
 
             console.error(error);
-
         }
     }
 
@@ -1233,7 +1684,7 @@
         const text =
             input.value.trim();
 
-        if (!text) {
+        if (!text && attachments.length === 0) {
             return;
         }
 
@@ -1242,7 +1693,11 @@
         const sendButton =
             document.getElementById("sendButton");
 
+        const attachButton =
+            document.getElementById("attachButton");
+
         sendButton.disabled = true;
+        attachButton.disabled = true;
 
         const welcome =
             document.getElementById("welcome");
@@ -1251,9 +1706,17 @@
             welcome.remove();
         }
 
+        const sentAttachments =
+            attachments.map(
+                attachment => ({
+                    ...attachment
+                })
+            );
+
         addMessage(
-            text,
-            "user"
+            text || "Attached files",
+            "user",
+            sentAttachments
         );
 
         input.value = "";
@@ -1262,24 +1725,73 @@
 
         try {
 
-            const response = await fetch(
-                "/api/chat",
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        message: text,
-                        mode: currentMode,
-                        conversationId:
-                            currentConversationId
-                    })
+            let response;
+
+            if (sentAttachments.length > 0) {
+
+                const formData =
+                    new FormData();
+
+                formData.append(
+                    "message",
+                    text
+                );
+
+                formData.append(
+                    "mode",
+                    currentMode
+                );
+
+                if (currentConversationId) {
+
+                    formData.append(
+                        "conversationId",
+                        currentConversationId
+                    );
                 }
-            );
+
+                formData.append(
+                    "attachmentIds",
+                    sentAttachments
+                        .map(
+                            attachment =>
+                                attachment.id
+                        )
+                        .join(",")
+                );
+
+                response = await fetch(
+                    "/api/chat/with-attachments",
+                    {
+                        method: "POST",
+                        body: formData
+                    }
+                );
+
+            } else {
+
+                response = await fetch(
+                    "/api/chat",
+                    {
+                        method: "POST",
+                        headers: {
+                            "Content-Type":
+                                "application/json"
+                        },
+                        body: JSON.stringify({
+                            message: text,
+                            mode: currentMode,
+                            conversationId:
+                                currentConversationId
+                        })
+                    }
+                );
+            }
 
             if (!response.ok) {
-                throw new Error("Request failed");
+                throw new Error(
+                    "Request failed"
+                );
             }
 
             const result =
@@ -1292,10 +1804,13 @@
             }
 
             addMessage(
-                result.response
+                result.message
+                    || result.response
                     || "No response was generated.",
                 "assistant"
             );
+
+            await clearAttachments();
 
             await loadConversations();
 
@@ -1313,13 +1828,18 @@
             sending = false;
 
             sendButton.disabled = false;
+            attachButton.disabled = false;
 
             input.focus();
         }
     }
 
 
-    function addMessage(text, type) {
+    function addMessage(
+        text,
+        type,
+        messageAttachments = []
+    ) {
 
         const container =
             document.getElementById("messages");
@@ -1351,13 +1871,93 @@
             text;
 
         message.appendChild(role);
-
         message.appendChild(content);
+
+        if (messageAttachments.length) {
+
+            const attachmentContainer =
+                document.createElement("div");
+
+            attachmentContainer.className =
+                "message-attachments";
+
+            messageAttachments.forEach(
+                attachment => {
+
+                    const item =
+                        document.createElement("div");
+
+                    item.className =
+                        "message-attachment";
+
+                    if (
+                        attachment.type === "image"
+                    ) {
+
+                        const image =
+                            document.createElement("img");
+
+                        image.src =
+                            attachment.url;
+
+                        image.alt =
+                            attachment.name;
+
+                        item.appendChild(image);
+                    }
+
+                    const name =
+                        document.createElement("span");
+
+                    name.textContent =
+                        attachment.name;
+
+                    item.appendChild(name);
+
+                    attachmentContainer.appendChild(item);
+                }
+            );
+
+            message.appendChild(
+                attachmentContainer
+            );
+        }
 
         container.appendChild(message);
 
         container.scrollTop =
             container.scrollHeight;
+    }
+
+
+    async function clearAttachments() {
+
+        const current =
+            attachments.slice();
+
+        attachments = [];
+
+        renderAttachments();
+
+        for (const attachment of current) {
+
+            try {
+
+                await fetch(
+                    "/api/attachments/"
+                    + encodeURIComponent(
+                        attachment.id
+                    ),
+                    {
+                        method: "DELETE"
+                    }
+                );
+
+            } catch (error) {
+
+                console.error(error);
+            }
+        }
     }
 
 
@@ -1445,7 +2045,6 @@
         } catch (error) {
 
             console.error(error);
-
         }
     }
 
@@ -1469,7 +2068,8 @@
             const messages =
                 await response.json();
 
-            currentConversationId = id;
+            currentConversationId =
+                id;
 
             const container =
                 document.getElementById(
@@ -1527,6 +2127,8 @@
                 );
             });
 
+            await clearAttachments();
+
             await loadConversations();
 
             closeSidebarMobile();
@@ -1534,7 +2136,6 @@
         } catch (error) {
 
             console.error(error);
-
         }
     }
 
@@ -1560,7 +2161,6 @@
         } catch (error) {
 
             alert("Could not clear memory.");
-
         }
     }
 
@@ -1601,6 +2201,8 @@
 
             clearMessages();
 
+            await clearAttachments();
+
             await loadConversations();
 
         } catch (error) {
@@ -1608,7 +2210,6 @@
             alert(
                 "Could not delete conversations."
             );
-
         }
     }
 
@@ -1620,7 +2221,6 @@
             .classList.add("open");
 
         loadEvolution();
-
     }
 
 
@@ -1671,8 +2271,6 @@
     }
 
 
-    /* EVOLUTION */
-
     async function loadEvolution() {
 
         try {
@@ -1703,7 +2301,6 @@
                 )
                 .textContent =
                 "Evolution state unavailable.";
-
         }
     }
 
@@ -1980,7 +2577,6 @@
             "/api/evolution/start",
             "Evolution started."
         );
-
     }
 
 
@@ -1990,7 +2586,6 @@
             "/api/evolution/pause",
             "Evolution paused."
         );
-
     }
 
 
@@ -2000,7 +2595,6 @@
             "/api/evolution/cycle",
             "Evolution cycle completed."
         );
-
     }
 
 
@@ -2044,7 +2638,6 @@
 
             message.textContent =
                 "Could not update evolution.";
-
         }
     }
 
@@ -2060,8 +2653,8 @@
             );
 
         message.textContent =
-            "Updating " +
-            formatDomainName(domain)
+            "Updating "
+            + formatDomainName(domain)
             + "...";
 
         try {
@@ -2096,7 +2689,6 @@
 
             message.textContent =
                 "Could not update domain.";
-
         }
     }
 
@@ -2156,7 +2748,6 @@
 
             message.textContent =
                 "Could not update priority.";
-
         }
     }
 
@@ -2169,7 +2760,6 @@
                 closeSettings();
                 closeSidebarMobile();
             }
-
         }
     );
 
