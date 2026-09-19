@@ -19,6 +19,9 @@
             --border: #292930;
             --text: #ffffff;
             --muted: #92929d;
+            --success: #7ee787;
+            --warning: #f2cc60;
+            --danger: #ff8c87;
         }
 
         html,
@@ -384,8 +387,8 @@
 
         .settings {
             position: relative;
-            width: min(560px, 100%);
-            max-height: min(85vh, 720px);
+            width: min(620px, 100%);
+            max-height: min(88vh, 780px);
             overflow-y: auto;
             background: #111116;
             border: 1px solid var(--border);
@@ -465,7 +468,7 @@
             width: 100%;
             background: transparent;
             border: 1px solid #432626;
-            color: #ff8c87;
+            color: var(--danger);
             padding: 11px;
             border-radius: 9px;
             cursor: pointer;
@@ -473,6 +476,190 @@
 
         .danger:hover {
             background: #211515;
+        }
+
+        /* EVOLUTION */
+
+        .evolution-status {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 13px;
+            padding: 14px;
+            margin-bottom: 12px;
+        }
+
+        .evolution-status-left {
+            min-width: 0;
+        }
+
+        .evolution-status-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .evolution-status-text {
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .evolution-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+            flex-shrink: 0;
+        }
+
+        .evolution-dot.running {
+            background: var(--success);
+            box-shadow: 0 0 12px rgba(126, 231, 135, 0.45);
+        }
+
+        .evolution-controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+
+        .evolution-control {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            border-radius: 10px;
+            padding: 10px;
+            cursor: pointer;
+            font-size: 12px;
+        }
+
+        .evolution-control:hover {
+            background: var(--panel-hover);
+        }
+
+        .evolution-control.primary {
+            background: #eeeeee;
+            color: #000;
+            border-color: #eeeeee;
+        }
+
+        .power-summary {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 9px;
+            margin-bottom: 16px;
+        }
+
+        .power-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 13px;
+        }
+
+        .power-card-label {
+            color: var(--muted);
+            font-size: 11px;
+            margin-bottom: 6px;
+        }
+
+        .power-card-value {
+            font-size: 22px;
+            font-weight: 700;
+        }
+
+        .domain-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .domain-card {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 13px;
+        }
+
+        .domain-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .domain-name {
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .domain-power {
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .domain-meta {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            margin-top: 8px;
+            color: var(--muted);
+            font-size: 11px;
+        }
+
+        .domain-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .domain-priority {
+            width: 72px;
+            background: #111116;
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            color: white;
+            padding: 5px 7px;
+            font-size: 11px;
+        }
+
+        .domain-toggle {
+            border: 1px solid var(--border);
+            background: #111116;
+            color: var(--muted);
+            border-radius: 7px;
+            padding: 5px 8px;
+            cursor: pointer;
+            font-size: 11px;
+        }
+
+        .domain-toggle.enabled {
+            color: var(--success);
+            border-color: #315a38;
+        }
+
+        .evolution-log {
+            max-height: 150px;
+            overflow-y: auto;
+            background: #0b0b0f;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 10px;
+            color: var(--muted);
+            white-space: pre-wrap;
+        }
+
+        .evolution-message {
+            color: var(--muted);
+            font-size: 12px;
+            margin-top: 9px;
+            min-height: 16px;
         }
 
         /* MOBILE */
@@ -533,13 +720,21 @@
 
             .settings {
                 width: 100%;
-                max-height: 90dvh;
+                max-height: 92dvh;
                 border-radius: 18px 18px 0 0;
                 padding: 20px;
             }
 
             .settings-header {
                 top: -20px;
+            }
+
+            .evolution-controls {
+                grid-template-columns: 1fr;
+            }
+
+            .power-summary {
+                grid-template-columns: 1fr 1fr;
             }
         }
     </style>
@@ -782,6 +977,114 @@
 
         </div>
 
+        <!-- EVOLUTION -->
+
+        <div class="setting-section">
+
+            <h3>Evolution</h3>
+
+            <div class="setting-description">
+                Control Blackwater's continuous self-improvement system.
+            </div>
+
+            <div class="evolution-status">
+
+                <div class="evolution-status-left">
+
+                    <div
+                        class="evolution-status-title"
+                        id="evolutionStatusTitle"
+                    >
+                        Evolution paused
+                    </div>
+
+                    <div
+                        class="evolution-status-text"
+                        id="evolutionStatusText"
+                    >
+                        Loading evolution state...
+                    </div>
+
+                </div>
+
+                <div
+                    class="evolution-dot"
+                    id="evolutionDot"
+                ></div>
+
+            </div>
+
+            <div class="evolution-controls">
+
+                <button
+                    class="evolution-control primary"
+                    onclick="startEvolution()"
+                >
+                    Start
+                </button>
+
+                <button
+                    class="evolution-control"
+                    onclick="pauseEvolution()"
+                >
+                    Pause
+                </button>
+
+                <button
+                    class="evolution-control"
+                    onclick="runEvolutionCycle()"
+                >
+                    Run cycle
+                </button>
+
+            </div>
+
+            <div class="power-summary">
+
+                <div class="power-card">
+
+                    <div class="power-card-label">
+                        Total power
+                    </div>
+
+                    <div
+                        class="power-card-value"
+                        id="totalPower"
+                    >
+                        0
+                    </div>
+
+                </div>
+
+                <div class="power-card">
+
+                    <div class="power-card-label">
+                        Evolution cycles
+                    </div>
+
+                    <div
+                        class="power-card-value"
+                        id="evolutionCycles"
+                    >
+                        0
+                    </div>
+
+                </div>
+
+            </div>
+
+            <div
+                class="domain-list"
+                id="domainList"
+            ></div>
+
+            <div
+                class="evolution-message"
+                id="evolutionMessage"
+            ></div>
+
+        </div>
+
         <div class="setting-section">
 
             <h3>Memory</h3>
@@ -829,6 +1132,8 @@
         || "swift";
 
     let sending = false;
+
+    let evolutionState = null;
 
 
     function selectMode(mode) {
@@ -888,7 +1193,9 @@
             );
 
             if (!response.ok) {
-                throw new Error("Could not create conversation");
+                throw new Error(
+                    "Could not create conversation"
+                );
             }
 
             const data =
@@ -1311,6 +1618,9 @@
         document
             .getElementById("settingsOverlay")
             .classList.add("open");
+
+        loadEvolution();
+
     }
 
 
@@ -1358,6 +1668,496 @@
                 input.scrollHeight,
                 180
             ) + "px";
+    }
+
+
+    /* EVOLUTION */
+
+    async function loadEvolution() {
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/evolution"
+                );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Could not load evolution"
+                );
+            }
+
+            evolutionState =
+                await response.json();
+
+            renderEvolution();
+
+        } catch (error) {
+
+            console.error(error);
+
+            document
+                .getElementById(
+                    "evolutionStatusText"
+                )
+                .textContent =
+                "Evolution state unavailable.";
+
+        }
+    }
+
+
+    function renderEvolution() {
+
+        if (!evolutionState) {
+            return;
+        }
+
+        const running =
+            Boolean(
+                evolutionState.running
+            );
+
+        const powers =
+            evolutionState.powers || {};
+
+        const priorities =
+            evolutionState.priorities || {};
+
+        const enabled =
+            evolutionState.enabledDomains
+            || {};
+
+        const cycles =
+            evolutionState.cycles || {};
+
+        const totalPower =
+            Object.values(powers)
+                .reduce(
+                    (sum, value) =>
+                        sum + Number(value || 0),
+                    0
+                );
+
+        document
+            .getElementById("totalPower")
+            .textContent =
+            formatNumber(totalPower);
+
+        document
+            .getElementById("evolutionCycles")
+            .textContent =
+            formatNumber(
+                evolutionState.totalCycles
+                || Object.values(cycles)
+                    .reduce(
+                        (sum, value) =>
+                            sum + Number(value || 0),
+                        0
+                    )
+            );
+
+        const title =
+            document.getElementById(
+                "evolutionStatusTitle"
+            );
+
+        const statusText =
+            document.getElementById(
+                "evolutionStatusText"
+            );
+
+        const dot =
+            document.getElementById(
+                "evolutionDot"
+            );
+
+        title.textContent =
+            running
+                ? "Evolution running"
+                : "Evolution paused";
+
+        statusText.textContent =
+            running
+                ? "Blackwater can continue improving automatically."
+                : "Automatic improvement is currently paused.";
+
+        dot.classList.toggle(
+            "running",
+            running
+        );
+
+        const domainList =
+            document.getElementById(
+                "domainList"
+            );
+
+        domainList.innerHTML = "";
+
+        const domainNames = [
+            "CODING",
+            "REASONING",
+            "RESEARCH",
+            "KNOWLEDGE",
+            "MEMORY"
+        ];
+
+        domainNames.forEach(domain => {
+
+            const power =
+                Number(
+                    powers[domain] || 0
+                );
+
+            const priority =
+                Number(
+                    priorities[domain] || 0
+                );
+
+            const isEnabled =
+                enabled[domain] !== false;
+
+            const cycleCount =
+                Number(
+                    cycles[domain] || 0
+                );
+
+            const card =
+                document.createElement("div");
+
+            card.className =
+                "domain-card";
+
+            const header =
+                document.createElement("div");
+
+            header.className =
+                "domain-header";
+
+            const name =
+                document.createElement("div");
+
+            name.className =
+                "domain-name";
+
+            name.textContent =
+                formatDomainName(domain);
+
+            const powerElement =
+                document.createElement("div");
+
+            powerElement.className =
+                "domain-power";
+
+            powerElement.textContent =
+                formatNumber(power);
+
+            header.appendChild(name);
+            header.appendChild(powerElement);
+
+            const meta =
+                document.createElement("div");
+
+            meta.className =
+                "domain-meta";
+
+            const cyclesText =
+                document.createElement("span");
+
+            cyclesText.textContent =
+                "Cycles: "
+                + formatNumber(cycleCount);
+
+            const actions =
+                document.createElement("div");
+
+            actions.className =
+                "domain-actions";
+
+            const priorityInput =
+                document.createElement("input");
+
+            priorityInput.className =
+                "domain-priority";
+
+            priorityInput.type =
+                "number";
+
+            priorityInput.min =
+                "0";
+
+            priorityInput.max =
+                "1000";
+
+            priorityInput.value =
+                priority;
+
+            priorityInput.title =
+                "Priority";
+
+            priorityInput.onchange =
+                () =>
+                    updateEvolutionPriority(
+                        domain,
+                        priorityInput.value
+                    );
+
+            const toggle =
+                document.createElement("button");
+
+            toggle.className =
+                "domain-toggle"
+                + (isEnabled
+                    ? " enabled"
+                    : "");
+
+            toggle.textContent =
+                isEnabled
+                    ? "Enabled"
+                    : "Disabled";
+
+            toggle.onclick =
+                () =>
+                    updateEvolutionDomain(
+                        domain,
+                        !isEnabled
+                    );
+
+            actions.appendChild(
+                priorityInput
+            );
+
+            actions.appendChild(
+                toggle
+            );
+
+            meta.appendChild(
+                cyclesText
+            );
+
+            meta.appendChild(
+                actions
+            );
+
+            card.appendChild(header);
+            card.appendChild(meta);
+
+            domainList.appendChild(card);
+        });
+    }
+
+
+    function formatDomainName(domain) {
+
+        return domain
+            .toLowerCase()
+            .replace(
+                /^./,
+                character =>
+                    character.toUpperCase()
+            );
+    }
+
+
+    function formatNumber(value) {
+
+        const number =
+            Number(value || 0);
+
+        if (!Number.isFinite(number)) {
+            return "0";
+        }
+
+        return Math.round(number)
+            .toLocaleString();
+    }
+
+
+    async function startEvolution() {
+
+        await evolutionAction(
+            "/api/evolution/start",
+            "Evolution started."
+        );
+
+    }
+
+
+    async function pauseEvolution() {
+
+        await evolutionAction(
+            "/api/evolution/pause",
+            "Evolution paused."
+        );
+
+    }
+
+
+    async function runEvolutionCycle() {
+
+        await evolutionAction(
+            "/api/evolution/cycle",
+            "Evolution cycle completed."
+        );
+
+    }
+
+
+    async function evolutionAction(
+        endpoint,
+        successMessage
+    ) {
+
+        const message =
+            document.getElementById(
+                "evolutionMessage"
+            );
+
+        message.textContent =
+            "Updating evolution...";
+
+        try {
+
+            const response =
+                await fetch(
+                    endpoint,
+                    {
+                        method: "POST"
+                    }
+                );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Evolution request failed"
+                );
+            }
+
+            message.textContent =
+                successMessage;
+
+            await loadEvolution();
+
+        } catch (error) {
+
+            console.error(error);
+
+            message.textContent =
+                "Could not update evolution.";
+
+        }
+    }
+
+
+    async function updateEvolutionDomain(
+        domain,
+        value
+    ) {
+
+        const message =
+            document.getElementById(
+                "evolutionMessage"
+            );
+
+        message.textContent =
+            "Updating " +
+            formatDomainName(domain)
+            + "...";
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/evolution/domain"
+                    + "?name="
+                    + encodeURIComponent(domain)
+                    + "&enabled="
+                    + encodeURIComponent(value),
+                    {
+                        method: "POST"
+                    }
+                );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Could not update domain"
+                );
+            }
+
+            await loadEvolution();
+
+            message.textContent =
+                formatDomainName(domain)
+                + " updated.";
+
+        } catch (error) {
+
+            console.error(error);
+
+            message.textContent =
+                "Could not update domain.";
+
+        }
+    }
+
+
+    async function updateEvolutionPriority(
+        domain,
+        value
+    ) {
+
+        const priority =
+            Number(value);
+
+        if (
+            !Number.isFinite(priority)
+            || priority < 0
+        ) {
+            await loadEvolution();
+            return;
+        }
+
+        const message =
+            document.getElementById(
+                "evolutionMessage"
+            );
+
+        message.textContent =
+            "Updating priority...";
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/evolution/priority"
+                    + "?name="
+                    + encodeURIComponent(domain)
+                    + "&value="
+                    + encodeURIComponent(priority),
+                    {
+                        method: "POST"
+                    }
+                );
+
+            if (!response.ok) {
+                throw new Error(
+                    "Could not update priority"
+                );
+            }
+
+            await loadEvolution();
+
+            message.textContent =
+                "Priority updated.";
+
+        } catch (error) {
+
+            console.error(error);
+
+            message.textContent =
+                "Could not update priority.";
+
+        }
     }
 
 
