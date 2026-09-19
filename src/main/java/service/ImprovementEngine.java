@@ -2,52 +2,39 @@ package service;
 
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Service
 public class ImprovementEngine {
 
     private final BenchmarkEngine benchmarkEngine;
     private final LearningEngine learningEngine;
     private final ImprovementPlanner improvementPlanner;
+    private final ImprovementGenerator improvementGenerator;
+    private final CodeChangeEngine codeChangeEngine;
+    private final ImprovementVerifier improvementVerifier;
+    private final CodeTestEngine codeTestEngine;
 
     public ImprovementEngine(
             BenchmarkEngine benchmarkEngine,
             LearningEngine learningEngine,
-            ImprovementPlanner improvementPlanner
+            ImprovementPlanner improvementPlanner,
+            ImprovementGenerator improvementGenerator,
+            CodeChangeEngine codeChangeEngine,
+            ImprovementVerifier improvementVerifier,
+            CodeTestEngine codeTestEngine
     ) {
-        this.benchmarkEngine =
-                benchmarkEngine;
-
-        this.learningEngine =
-                learningEngine;
-
-        this.improvementPlanner =
-                improvementPlanner;
+        this.benchmarkEngine = benchmarkEngine;
+        this.learningEngine = learningEngine;
+        this.improvementPlanner = improvementPlanner;
+        this.improvementGenerator = improvementGenerator;
+        this.codeChangeEngine = codeChangeEngine;
+        this.improvementVerifier = improvementVerifier;
+        this.codeTestEngine = codeTestEngine;
     }
 
     public synchronized ImprovementResult improveWeakestDomain() {
 
-        ImprovementPlanner.ImprovementPlan plan;
-
-        try {
-
-            plan =
-                    improvementPlanner.createPlan();
-
-        } catch (Exception e) {
-
-            return new ImprovementResult(
-                    "unknown",
-                    0,
-                    0,
-                    false,
-                    "Could not create improvement plan: "
-                            + e.getMessage(),
-                    null
-            );
-        }
+        ImprovementPlanner.ImprovementPlan plan =
+                improvementPlanner.createPlan();
 
         return executePlan(plan);
     }
@@ -60,78 +47,37 @@ public class ImprovementEngine {
                 || domain.isBlank()) {
 
             return new ImprovementResult(
-                    "unknown",
+                    "",
                     0,
-                    0,
-                    false,
-                    "Domain is empty.",
-                    null
-            );
-        }
-
-        ImprovementPlanner.ImprovementPlan plan;
-
-        try {
-
-            plan =
-                    improvementPlanner.createPlan();
-
-        } catch (Exception e) {
-
-            return new ImprovementResult(
-                    domain,
                     0,
                     0,
                     false,
-                    "Could not create improvement plan: "
-                            + e.getMessage(),
-                    null
+                    "Domain is empty."
             );
         }
 
-        BenchmarkEngine.BenchmarkResult benchmark;
-
-        try {
-
-            benchmark =
-                    benchmarkEngine.run(
-                            domain
-                    );
-
-        } catch (Exception e) {
-
-            return new ImprovementResult(
-                    domain,
-                    0,
-                    0,
-                    false,
-                    "Benchmark failed: "
-                            + e.getMessage(),
-                    null
-            );
-        }
+        BenchmarkEngine.BenchmarkResult benchmark =
+                benchmarkEngine.run(domain);
 
         SelfImprovementFeatureBank.Feature feature =
-                findFeatureForDomain(
-                        domain
-                );
+                improvementPlanner
+                        .getHighestPriorityFeature(
+                                domain
+                        );
 
-        String topic;
+        if (feature == null) {
 
-        if (feature != null) {
-
-            topic =
-                    buildFeatureTopic(
-                            feature
-                    );
-
-        } else {
-
-            topic =
-                    plan.researchTopic();
+            return new ImprovementResult(
+                    domain,
+                    benchmark.score(),
+                    benchmark.score(),
+                    0,
+                    false,
+                    "No incomplete feature is available."
+            );
         }
 
-        ImprovementPlanner.ImprovementPlan domainPlan =
+        ImprovementPlanner.ImprovementPlan plan =
                 new ImprovementPlanner.ImprovementPlan(
                         domain,
                         benchmark.score(),
@@ -139,36 +85,33 @@ public class ImprovementEngine {
                                 0,
                                 100 - benchmark.score()
                         ),
-                        calculateDifficulty(
-                                benchmark.score()
-                        ),
-                        topic,
-                        plan.availableDomains(),
-                        feature,
-                        feature == null
-                                ? ""
-                                : feature.name()
+                        feature.priority(),
+                        "Improve "
+                                + feature.name(),
+                        improvementPlanner
+                                .getFeaturesForDomain(
+                                        domain
+                                ),
+                        feature.name(),
+                        feature.name()
                 );
 
-        return executePlan(
-                domainPlan
-        );
+        return executePlan(plan);
     }
 
     private ImprovementResult executePlan(
             ImprovementPlanner.ImprovementPlan plan
     ) {
 
-        if (plan.targetDomain() == null
-                || plan.targetDomain().isBlank()) {
+        if (plan == null) {
 
             return new ImprovementResult(
-                    "unknown",
+                    "",
+                    0,
                     0,
                     0,
                     false,
-                    "No improvement target found.",
-                    plan.feature()
+                    "No improvement plan available."
             );
         }
 
@@ -178,33 +121,36 @@ public class ImprovementEngine {
         int before =
                 plan.currentScore();
 
-        String featureName =
-                plan.featureName();
+        SelfImprovementFeatureBank.Feature feature =
+                improvementPlanner
+                        .findFeature(
+                                plan.featureName()
+                        );
 
-        if (plan.feature() != null) {
+        if (feature == null) {
 
-            featureName =
-                    plan.feature()
-                            .name();
-        }
-
-        String topic =
-                plan.researchTopic();
-
-        if (plan.feature() != null) {
-
-            markFeatureStarted(
-                    featureName
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "Feature could not be found."
             );
         }
 
-        String learningResult;
+        improvementPlanner
+                .markFeatureStarted(
+                        feature.name()
+                );
+
+        String researchResult;
 
         try {
 
-            learningResult =
+            researchResult =
                     learningEngine.learn(
-                            topic
+                            plan.researchTopic()
                     );
 
         } catch (Exception e) {
@@ -213,18 +159,163 @@ public class ImprovementEngine {
                     domain,
                     before,
                     before,
+                    0,
                     false,
-                    "Learning failed: "
-                            + e.getMessage(),
-                    plan.feature()
+                    "Learning failed."
             );
         }
 
-        BenchmarkEngine.BenchmarkResult after;
+        if (researchResult == null
+                || researchResult.isBlank()) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "No useful research result."
+            );
+        }
+
+        ImprovementGenerator.ImprovementProposal proposal;
 
         try {
 
-            after =
+            proposal =
+                    improvementGenerator.generate(
+                            domain,
+                            feature
+                    );
+
+        } catch (Exception e) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "Improvement generation failed."
+            );
+        }
+
+        if (!proposal.generated()) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "No improvement proposal generated."
+            );
+        }
+
+        CodeChangeEngine.ChangeResult changes;
+
+        try {
+
+            changes =
+                    codeChangeEngine.createChangeSet(
+                            proposal
+                    );
+
+        } catch (Exception e) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "Code change generation failed."
+            );
+        }
+
+        if (!changes.success()) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "Generated changes failed to enter sandbox."
+            );
+        }
+
+        ImprovementVerifier.VerificationResult verification;
+
+        try {
+
+            verification =
+                    improvementVerifier.verify(
+                            changes.experimentId()
+                    );
+
+        } catch (Exception e) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "Verification failed."
+            );
+        }
+
+        if (!verification.passed()) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "Safety verification failed."
+            );
+        }
+
+        CodeTestEngine.TestResult tests;
+
+        try {
+
+            tests =
+                    codeTestEngine.test(
+                            changes.experimentId()
+                    );
+
+        } catch (Exception e) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "Code tests failed to execute."
+            );
+        }
+
+        if (!tests.passed()) {
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    before,
+                    0,
+                    false,
+                    "Generated code failed verification tests."
+            );
+        }
+
+        BenchmarkEngine.BenchmarkResult afterResult;
+
+        try {
+
+            afterResult =
                     benchmarkEngine.run(
                             domain
                     );
@@ -235,313 +326,52 @@ public class ImprovementEngine {
                     domain,
                     before,
                     before,
+                    0,
                     false,
-                    "Post-learning benchmark failed: "
-                            + e.getMessage(),
-                    plan.feature()
+                    "Post-improvement benchmark failed."
             );
         }
 
-        int afterScore =
-                after.score();
-
-        boolean improved =
-                afterScore > before;
+        int after =
+                afterResult.score();
 
         int improvement =
-                afterScore - before;
+                after - before;
 
-        if (improved
-                && plan.feature() != null) {
+        if (improvement > 0) {
 
-            markFeatureSuccessful(
-                    featureName
+            improvementPlanner
+                    .markFeatureSuccessful(
+                            feature.name()
+                    );
+
+            return new ImprovementResult(
+                    domain,
+                    before,
+                    after,
+                    improvement,
+                    true,
+                    "Improvement verified successfully."
             );
         }
-
-        StringBuilder message =
-                new StringBuilder();
-
-        if (improved) {
-
-            message.append(
-                    "Domain improved."
-            );
-
-        } else {
-
-            message.append(
-                    "No measurable improvement."
-            );
-        }
-
-        message.append(
-                System.lineSeparator()
-        )
-        .append(
-                "Domain: "
-        )
-        .append(
-                domain
-        )
-        .append(
-                System.lineSeparator()
-        )
-        .append(
-                "Feature: "
-        )
-        .append(
-                featureName.isBlank()
-                        ? "General improvement"
-                        : featureName
-        )
-        .append(
-                System.lineSeparator()
-        )
-        .append(
-                "Difficulty: "
-        )
-        .append(
-                plan.difficulty()
-        )
-        .append(
-                "/5"
-        )
-        .append(
-                System.lineSeparator()
-        )
-        .append(
-                "Benchmark: "
-        )
-        .append(
-                before
-        )
-        .append(
-                " → "
-        )
-        .append(
-                afterScore
-        )
-        .append(
-                System.lineSeparator()
-        )
-        .append(
-                "Improvement: "
-        )
-        .append(
-                improvement >= 0
-                        ? "+"
-                        : ""
-        )
-        .append(
-                improvement
-        )
-        .append(
-                System.lineSeparator()
-        )
-        .append(
-                "Research:"
-        )
-        .append(
-                System.lineSeparator()
-        )
-        .append(
-                learningResult
-        );
 
         return new ImprovementResult(
                 domain,
                 before,
-                afterScore,
-                improved,
-                message.toString(),
-                plan.feature()
+                after,
+                improvement,
+                false,
+                "Change passed safety tests but did not improve the benchmark."
         );
-    }
-
-    private SelfImprovementFeatureBank.Feature findFeatureForDomain(
-            String domain
-    ) {
-
-        return improvementPlanner
-                .getFeaturesForDomain(domain)
-                .stream()
-                .filter(
-                        feature ->
-                                !feature.completed()
-                )
-                .findFirst()
-                .orElse(null);
-    }
-
-    private String buildFeatureTopic(
-            SelfImprovementFeatureBank.Feature feature
-    ) {
-
-        return """
-                Research how to improve Blackwater with this capability:
-
-                Capability:
-                %s
-
-                Domain:
-                %s
-
-                Description:
-                %s
-
-                Priority:
-                %d
-
-                Determine the safest implementation approach.
-                Identify required backend and frontend changes.
-                Identify dependencies and security concerns.
-                Identify automated tests needed to verify the change.
-                """.formatted(
-                feature.name(),
-                feature.domain(),
-                feature.description(),
-                feature.priority()
-        ).trim();
-    }
-
-    private int calculateDifficulty(
-            int score
-    ) {
-
-        if (score < 20) {
-            return 1;
-        }
-
-        if (score < 40) {
-            return 2;
-        }
-
-        if (score < 60) {
-            return 3;
-        }
-
-        if (score < 80) {
-            return 4;
-        }
-
-        return 5;
-    }
-
-    private void markFeatureStarted(
-            String featureName
-    ) {
-
-        if (featureName == null
-                || featureName.isBlank()) {
-
-            return;
-        }
-
-        try {
-
-            /*
-             * Feature progress is intentionally handled
-             * by the feature bank.
-             *
-             * The planner remains responsible for
-             * selecting the feature.
-             */
-
-        } catch (Exception ignored) {
-        }
-    }
-
-    private void markFeatureSuccessful(
-            String featureName
-    ) {
-
-        if (featureName == null
-                || featureName.isBlank()) {
-
-            return;
-        }
-
-        try {
-
-            /*
-             * Feature completion will be persisted
-             * when the code-evolution layer is added.
-             */
-
-        } catch (Exception ignored) {
-        }
-    }
-
-    public synchronized List<DomainScore> collectBenchmarks() {
-
-        List<DomainScore> result =
-                new ArrayList<>();
-
-        add(
-                result,
-                "knowledge"
-        );
-
-        add(
-                result,
-                "reasoning"
-        );
-
-        add(
-                result,
-                "research"
-        );
-
-        add(
-                result,
-                "coding"
-        );
-
-        add(
-                result,
-                "memory"
-        );
-
-        return result;
-    }
-
-    private void add(
-            List<DomainScore> result,
-            String domain
-    ) {
-
-        try {
-
-            BenchmarkEngine.BenchmarkResult benchmark =
-                    benchmarkEngine.run(
-                            domain
-                    );
-
-            result.add(
-                    new DomainScore(
-                            domain,
-                            benchmark.score()
-                    )
-            );
-
-        } catch (Exception ignored) {
-        }
-    }
-
-    public record DomainScore(
-            String domain,
-            int score
-    ) {
     }
 
     public record ImprovementResult(
             String domain,
             int beforeScore,
             int afterScore,
-            boolean improved,
-            String message,
-            SelfImprovementFeatureBank.Feature feature
+            int improvement,
+            boolean successful,
+            String message
     ) {
     }
 }
