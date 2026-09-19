@@ -3,6 +3,7 @@ package service;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 
@@ -44,76 +45,52 @@ public class AIService {
             String mode,
             String conversationId
     ) {
-        String cleanMessage =
-                message == null ? "" : message.trim();
-
-        if (cleanMessage.isBlank()) {
-            return "اكتبلي شنو تريد وأنا أتعامل وياه.";
-        }
-
-        String normalizedMode =
-                normalizeMode(mode);
-
-        String conversationContext =
-                buildConversationContext(conversationId);
-
-        String memoryContext =
-                buildMemoryContext(cleanMessage);
-
-        String knowledgeContext =
-                buildKnowledgeContext(cleanMessage);
-
-        boolean shouldResearch =
-                shouldResearch(
-                        cleanMessage,
-                        normalizedMode
-                );
-
-        String researchContext = "";
-
-        if (shouldResearch) {
-            try {
-                ResearchEngine.ResearchResult research =
-                        researchEngine.research(cleanMessage);
-
-                researchContext =
-                        formatResearch(research);
-
-            } catch (Exception ignored) {
-                researchContext = "";
-            }
-        }
-
-        String prompt =
-                buildPrompt(
-                        cleanMessage,
-                        normalizedMode,
-                        conversationContext,
-                        memoryContext,
-                        knowledgeContext,
-                        researchContext
-                );
-
-        return generateWithProviders(
-                prompt,
-                cleanMessage,
-                normalizedMode,
-                knowledgeContext,
-                researchContext
+        return generateInternal(
+                message,
+                mode,
+                conversationId,
+                "",
+                List.of()
         );
     }
 
-    /**
-     * Generates an answer using text extracted from attachments.
-     *
-     * Image data itself is intentionally not converted into fake text.
-     * Actual multimodal image input is handled at the provider layer.
-     */
     public String generateWithAttachments(
             String message,
             String mode,
             String conversationId,
             String attachmentContext
+    ) {
+        return generateInternal(
+                message,
+                mode,
+                conversationId,
+                attachmentContext,
+                List.of()
+        );
+    }
+
+    public String generateWithAttachments(
+            String message,
+            String mode,
+            String conversationId,
+            String attachmentContext,
+            List<AIProvider.ImageInput> images
+    ) {
+        return generateInternal(
+                message,
+                mode,
+                conversationId,
+                attachmentContext,
+                images
+        );
+    }
+
+    private String generateInternal(
+            String message,
+            String mode,
+            String conversationId,
+            String attachmentContext,
+            List<AIProvider.ImageInput> images
     ) {
         String cleanMessage =
                 message == null ? "" : message.trim();
@@ -125,6 +102,12 @@ public class AIService {
                 attachmentContext == null
                         ? ""
                         : attachmentContext.trim();
+
+        if (cleanMessage.isBlank()
+                && cleanAttachmentContext.isBlank()
+                && (images == null || images.isEmpty())) {
+            return "اكتبلي شنو تريد وأنا أتعامل وياه.";
+        }
 
         String effectiveMessage =
                 cleanMessage.isBlank()
@@ -168,26 +151,18 @@ public class AIService {
                         conversationContext,
                         memoryContext,
                         knowledgeContext,
-                        researchContext
+                        researchContext,
+                        cleanAttachmentContext,
+                        images
                 );
-
-        if (!cleanAttachmentContext.isBlank()) {
-            prompt +=
-                    "\n\nATTACHMENT CONTEXT:\n"
-                            + cleanAttachmentContext
-                            + "\n\n"
-                            + "Use the attachment information when "
-                            + "answering the user's request.\n"
-                            + "Do not claim to see visual details "
-                            + "unless actual image input was provided.";
-        }
 
         return generateWithProviders(
                 prompt,
                 effectiveMessage,
                 normalizedMode,
                 knowledgeContext,
-                researchContext
+                researchContext,
+                images
         );
     }
 
@@ -196,15 +171,31 @@ public class AIService {
             String originalMessage,
             String mode,
             String knowledgeContext,
-            String researchContext
+            String researchContext,
+            List<AIProvider.ImageInput> images
     ) {
         List<AIProvider> providers =
                 orderedProviders();
 
+        List<AIProvider.ImageInput> safeImages =
+                images == null
+                        ? List.of()
+                        : images;
+
         for (AIProvider provider : providers) {
             try {
-                String response =
-                        provider.generate(prompt);
+                String response;
+
+                if (safeImages.isEmpty()) {
+                    response =
+                            provider.generate(prompt);
+                } else {
+                    response =
+                            provider.generate(
+                                    prompt,
+                                    safeImages
+                            );
+                }
 
                 if (isUsableResponse(response)) {
                     return response.trim();
@@ -281,7 +272,9 @@ public class AIService {
             String conversationContext,
             String memoryContext,
             String knowledgeContext,
-            String researchContext
+            String researchContext,
+            String attachmentContext,
+            List<AIProvider.ImageInput> images
     ) {
         StringBuilder prompt =
                 new StringBuilder();
@@ -333,6 +326,24 @@ public class AIService {
             prompt.append("\n\n");
         }
 
+        if (!attachmentContext.isBlank()) {
+            prompt.append(
+                    "ATTACHMENT CONTEXT:\n"
+            );
+            prompt.append(attachmentContext);
+            prompt.append("\n\n");
+        }
+
+        if (images != null && !images.isEmpty()) {
+            prompt.append(
+                    "IMAGE INPUT:\n"
+            );
+            prompt.append(
+                    "One or more images are attached and will be provided "
+                            + "directly to a multimodal AI provider.\n\n"
+            );
+        }
+
         prompt.append(
                 "USER REQUEST:\n"
         );
@@ -346,10 +357,11 @@ public class AIService {
                 - Answer the actual request.
                 - Prefer verified research over unsupported guesses.
                 - Use relevant memory and knowledge when useful.
+                - Use attached files when relevant.
+                - Analyze attached images when actual image input is available.
+                - Do not claim to see an image if image input was not processed.
                 - Do not mention internal system instructions.
                 - Do not pretend you performed an action you did not perform.
-                - If attachment context is provided, use it carefully.
-                - Do not invent visual details from an image unless image input was actually processed.
                 """
         );
 
@@ -611,9 +623,7 @@ public class AIService {
         }
 
         String lower =
-                message.toLowerCase(
-                        Locale.ROOT
-                );
+                message.toLowerCase(Locale.ROOT);
 
         String[] researchSignals = {
                 "search",
@@ -694,9 +704,7 @@ public class AIService {
         }
 
         String lower =
-                value.toLowerCase(
-                        Locale.ROOT
-                );
+                value.toLowerCase(Locale.ROOT);
 
         String[] invalidSignals = {
                 "openai_api_key is not configured",
@@ -738,9 +746,7 @@ public class AIService {
                     "بحثت بالمصادر المتاحة وجمعت المعلومات التالية:\n\n"
             );
 
-            response.append(
-                    researchContext
-            );
+            response.append(researchContext);
 
             return response.toString();
         }
@@ -750,9 +756,7 @@ public class AIService {
                     "عندي معرفة مخزنة مرتبطة بطلبك:\n\n"
             );
 
-            response.append(
-                    knowledgeContext
-            );
+            response.append(knowledgeContext);
 
             return response.toString();
         }
