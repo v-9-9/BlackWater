@@ -1,34 +1,41 @@
 package service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
-import org.springframework.web.reactive.function.client.WebClient;
 
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 @Service
 public class AnthropicProvider implements AIProvider {
 
-    private final WebClient webClient;
-    private final AIResponseParser responseParser;
+    private static final String DEFAULT_MODEL = "claude-sonnet-5";
 
-    public AnthropicProvider(
-            WebClient.Builder builder,
-            AIResponseParser responseParser
-    ) {
-        this.webClient = builder.build();
-        this.responseParser = responseParser;
+    private final ObjectMapper objectMapper;
+    private final HttpClient httpClient;
+
+    public AnthropicProvider(ObjectMapper objectMapper) {
+        this.objectMapper = objectMapper;
+        this.httpClient = HttpClient.newHttpClient();
     }
 
     @Override
     public String generate(String message) {
-        return generate(message, "swift");
+        return generate(message, List.of());
     }
 
+    @Override
     public String generate(
             String message,
-            String mode
+            List<AIProvider.ImageInput> images
     ) {
-
         String apiKey =
                 System.getenv("ANTHROPIC_API_KEY");
 
@@ -36,30 +43,84 @@ public class AnthropicProvider implements AIProvider {
             return "ANTHROPIC_API_KEY is not configured.";
         }
 
-        String model = getModel(mode);
-
-        Map<String, Object> body = Map.of(
-                "model",
-                model,
-                "max_tokens",
-                4096,
-                "messages",
-                new Object[]{
-                        Map.of(
-                                "role",
-                                "user",
-                                "content",
-                                message
-                        )
-                }
-        );
+        String model =
+                getEnvironment(
+                        "ANTHROPIC_MODEL",
+                        DEFAULT_MODEL
+                );
 
         try {
+            List<Map<String, Object>> content =
+                    new ArrayList<>();
 
-            String rawResponse =
-                    webClient.post()
+            if (images != null) {
+                for (AIProvider.ImageInput image : images) {
+                    if (image == null
+                            || image.base64Data() == null
+                            || image.base64Data().isBlank()) {
+                        continue;
+                    }
+
+                    String mediaType = image.mediaType();
+
+                    if (mediaType == null
+                            || mediaType.isBlank()) {
+                        mediaType = "image/jpeg";
+                    }
+
+                    Map<String, Object> source =
+                            new HashMap<>();
+
+                    source.put("type", "base64");
+                    source.put("media_type", mediaType);
+                    source.put("data", image.base64Data());
+
+                    Map<String, Object> imageBlock =
+                            new HashMap<>();
+
+                    imageBlock.put("type", "image");
+                    imageBlock.put("source", source);
+
+                    content.add(imageBlock);
+                }
+            }
+
+            Map<String, Object> textBlock =
+                    new HashMap<>();
+
+            textBlock.put("type", "text");
+            textBlock.put(
+                    "text",
+                    message == null ? "" : message
+            );
+
+            content.add(textBlock);
+
+            Map<String, Object> userMessage =
+                    new HashMap<>();
+
+            userMessage.put("role", "user");
+            userMessage.put("content", content);
+
+            Map<String, Object> body =
+                    new HashMap<>();
+
+            body.put("model", model);
+            body.put("max_tokens", 4096);
+            body.put(
+                    "messages",
+                    List.of(userMessage)
+            );
+
+            String json =
+                    objectMapper.writeValueAsString(body);
+
+            HttpRequest request =
+                    HttpRequest.newBuilder()
                             .uri(
-                                    "https://api.anthropic.com/v1/messages"
+                                    URI.create(
+                                            "https://api.anthropic.com/v1/messages"
+                                    )
                             )
                             .header(
                                     "x-api-key",
@@ -73,64 +134,95 @@ public class AnthropicProvider implements AIProvider {
                                     "Content-Type",
                                     "application/json"
                             )
-                            .bodyValue(body)
-                            .retrieve()
-                            .bodyToMono(String.class)
-                            .block();
+                            .POST(
+                                    HttpRequest.BodyPublishers
+                                            .ofString(json)
+                            )
+                            .build();
 
-            return responseParser.parseAnthropic(
-                    rawResponse
+            HttpResponse<String> response =
+                    httpClient.send(
+                            request,
+                            HttpResponse.BodyHandlers.ofString()
+                    );
+
+            if (response.statusCode() < 200
+                    || response.statusCode() >= 300) {
+
+                return "Anthropic request failed: "
+                        + response.statusCode()
+                        + " "
+                        + response.body();
+            }
+
+            return extractResponseText(
+                    response.body()
             );
 
         } catch (Exception e) {
-
             return "Anthropic request failed: "
                     + e.getMessage();
         }
     }
 
-    private String getModel(String mode) {
+    private String extractResponseText(
+            String responseBody
+    ) {
+        try {
+            JsonNode root =
+                    objectMapper.readTree(responseBody);
 
-        String defaultModel =
-                System.getenv()
-                        .getOrDefault(
-                                "ANTHROPIC_MODEL",
-                                "claude-sonnet-5"
-                        );
+            JsonNode content =
+                    root.path("content");
 
-        String selectedMode =
-                mode == null
-                        ? "swift"
-                        : mode.toLowerCase().trim();
+            StringBuilder result =
+                    new StringBuilder();
 
-        return switch (selectedMode) {
+            if (content.isArray()) {
+                for (JsonNode block : content) {
+                    if (!"text".equals(
+                            block.path("type").asText()
+                    )) {
+                        continue;
+                    }
 
-            case "deep" ->
-                    System.getenv()
-                            .getOrDefault(
-                                    "ANTHROPIC_DEEP_MODEL",
-                                    defaultModel
-                            );
+                    String text =
+                            block.path("text").asText("");
 
-            case "prime" ->
-                    System.getenv()
-                            .getOrDefault(
-                                    "ANTHROPIC_PRIME_MODEL",
-                                    defaultModel
-                            );
+                    if (text.isBlank()) {
+                        continue;
+                    }
 
-            case "swift", "fast" ->
-                    defaultModel;
+                    if (result.length() > 0) {
+                        result.append("\n");
+                    }
 
-            case "powerful" ->
-                    System.getenv()
-                            .getOrDefault(
-                                    "ANTHROPIC_PRIME_MODEL",
-                                    defaultModel
-                            );
+                    result.append(text);
+                }
+            }
 
-            default ->
-                    defaultModel;
-        };
+            if (result.length() > 0) {
+                return result.toString();
+            }
+
+            return responseBody;
+
+        } catch (Exception e) {
+            return responseBody;
+        }
+    }
+
+    private String getEnvironment(
+            String name,
+            String fallback
+    ) {
+        String value =
+                System.getenv(name);
+
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+
+        return value.trim();
     }
 }
