@@ -1,6 +1,10 @@
 package controller;
 
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 import service.BenchmarkEngine;
 
 @RestController
@@ -28,60 +32,8 @@ public class BenchmarkController {
     }
 
     @GetMapping("/all")
-    public BenchmarkSummary all() {
+    public BenchmarkEngine.BenchmarkSummary all() {
 
-        BenchmarkEngine.BenchmarkResult knowledge =
-                benchmarkEngine.run(
-                        "knowledge"
-                );
-
-        BenchmarkEngine.BenchmarkResult reasoning =
-                benchmarkEngine.run(
-                        "reasoning"
-                );
-
-        BenchmarkEngine.BenchmarkResult research =
-                benchmarkEngine.run(
-                        "research"
-                );
-
-        BenchmarkEngine.BenchmarkResult coding =
-                benchmarkEngine.run(
-                        "coding"
-                );
-
-        BenchmarkEngine.BenchmarkResult memory =
-                benchmarkEngine.run(
-                        "memory"
-                );
-
-        int total =
-                knowledge.score()
-                        + reasoning.score()
-                        + research.score()
-                        + coding.score()
-                        + memory.score();
-
-        int average =
-                total / 5;
-
-        return new BenchmarkSummary(
-                average,
-                knowledge,
-                reasoning,
-                research,
-                coding,
-                memory
-        );
-    }
-
-    public record BenchmarkSummary(
-            int averageScore,
-            BenchmarkEngine.BenchmarkResult knowledge,
-            BenchmarkEngine.BenchmarkResult reasoning,
-            BenchmarkEngine.BenchmarkResult research,
-            BenchmarkEngine.BenchmarkResult coding,
-            BenchmarkEngine.BenchmarkResult memory
-    ) {
+        return benchmarkEngine.runAll();
     }
 }
