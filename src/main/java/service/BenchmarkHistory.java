@@ -15,7 +15,9 @@ import java.util.List;
 public class BenchmarkHistory {
 
     private static final Path HISTORY_FILE =
-            Path.of("blackwater-benchmark-history.txt");
+            Path.of(
+                    "blackwater-benchmark-history.txt"
+            );
 
     public synchronized void record(
             BenchmarkEngine.BenchmarkSummary summary
@@ -25,27 +27,27 @@ public class BenchmarkHistory {
             return;
         }
 
-        try {
+        String line =
+                Instant.now()
+                        + "|"
+                        + summary.averageScore()
+                        + "|"
+                        + summary.knowledge().score()
+                        + "|"
+                        + summary.reasoning().score()
+                        + "|"
+                        + summary.research().score()
+                        + "|"
+                        + summary.coding().score()
+                        + "|"
+                        + summary.memory().score()
+                        + System.lineSeparator();
 
-            String entry =
-                    Instant.now()
-                            + "|"
-                            + summary.averageScore()
-                            + "|"
-                            + summary.knowledge().score()
-                            + "|"
-                            + summary.reasoning().score()
-                            + "|"
-                            + summary.research().score()
-                            + "|"
-                            + summary.coding().score()
-                            + "|"
-                            + summary.memory().score()
-                            + System.lineSeparator();
+        try {
 
             Files.writeString(
                     HISTORY_FILE,
-                    entry,
+                    line,
                     StandardCharsets.UTF_8,
                     StandardOpenOption.CREATE,
                     StandardOpenOption.APPEND
@@ -55,14 +57,15 @@ public class BenchmarkHistory {
         }
     }
 
-    public synchronized List<HistoryEntry> getHistory() {
+    public synchronized List<HistoryEntry>
+    getHistory() {
 
-        if (!Files.exists(
-                HISTORY_FILE
-        )) {
-
+        if (!Files.exists(HISTORY_FILE)) {
             return List.of();
         }
+
+        List<HistoryEntry> result =
+                new ArrayList<>();
 
         try {
 
@@ -71,9 +74,6 @@ public class BenchmarkHistory {
                             HISTORY_FILE,
                             StandardCharsets.UTF_8
                     );
-
-            List<HistoryEntry> result =
-                    new ArrayList<>();
 
             for (String line : lines) {
 
@@ -85,15 +85,14 @@ public class BenchmarkHistory {
                 }
             }
 
-            return result;
-
-        } catch (IOException e) {
-
-            return List.of();
+        } catch (IOException ignored) {
         }
+
+        return result;
     }
 
-    public synchronized HistoryEntry getLatest() {
+    public synchronized HistoryEntry
+    getLatest() {
 
         List<HistoryEntry> history =
                 getHistory();
@@ -107,27 +106,20 @@ public class BenchmarkHistory {
         );
     }
 
-    public synchronized int getBestAverage() {
+    public synchronized int
+    getBestAverage() {
 
-        List<HistoryEntry> history =
-                getHistory();
-
-        int best = 0;
-
-        for (HistoryEntry entry :
-                history) {
-
-            best =
-                    Math.max(
-                            best,
-                            entry.averageScore()
-                    );
-        }
-
-        return best;
+        return getHistory()
+                .stream()
+                .mapToInt(
+                        HistoryEntry::averageScore
+                )
+                .max()
+                .orElse(0);
     }
 
-    public synchronized int getPreviousAverage() {
+    public synchronized int
+    getPreviousAverage() {
 
         List<HistoryEntry> history =
                 getHistory();
@@ -141,61 +133,73 @@ public class BenchmarkHistory {
         ).averageScore();
     }
 
+    public synchronized int
+    getImprovementFromPrevious() {
+
+        HistoryEntry latest =
+                getLatest();
+
+        if (latest == null) {
+            return 0;
+        }
+
+        return latest.averageScore()
+                - getPreviousAverage();
+    }
+
     private HistoryEntry parse(
             String line
     ) {
 
         if (line == null
                 || line.isBlank()) {
+            return null;
+        }
 
+        String[] parts =
+                line.split(
+                        "\\|",
+                        -1
+                );
+
+        if (parts.length < 7) {
             return null;
         }
 
         try {
-
-            String[] parts =
-                    line.split(
-                            "\\|"
-                    );
-
-            if (parts.length < 7) {
-                return null;
-            }
 
             return new HistoryEntry(
-                    parts[0],
-                    parseInt(parts[1]),
-                    parseInt(parts[2]),
-                    parseInt(parts[3]),
-                    parseInt(parts[4]),
-                    parseInt(parts[5]),
-                    parseInt(parts[6])
+                    Instant.parse(
+                            parts[0]
+                    ),
+                    Integer.parseInt(
+                            parts[1]
+                    ),
+                    Integer.parseInt(
+                            parts[2]
+                    ),
+                    Integer.parseInt(
+                            parts[3]
+                    ),
+                    Integer.parseInt(
+                            parts[4]
+                    ),
+                    Integer.parseInt(
+                            parts[5]
+                    ),
+                    Integer.parseInt(
+                            parts[6]
+                    )
             );
 
-        } catch (Exception e) {
+        } catch (Exception ignored) {
 
             return null;
-        }
-    }
-
-    private int parseInt(
-            String value
-    ) {
-
-        try {
-
-            return Integer.parseInt(
-                    value.trim()
-            );
-
-        } catch (Exception e) {
-
-            return 0;
         }
     }
 
     public record HistoryEntry(
-            String timestamp,
+            Instant timestamp,
             int averageScore,
             int knowledgeScore,
             int reasoningScore,
