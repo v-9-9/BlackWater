@@ -10,12 +10,17 @@ import java.util.List;
 public class ImprovementPlanner {
 
     private final BenchmarkEngine benchmarkEngine;
+    private final SelfImprovementFeatureBank featureBank;
 
     public ImprovementPlanner(
-            BenchmarkEngine benchmarkEngine
+            BenchmarkEngine benchmarkEngine,
+            SelfImprovementFeatureBank featureBank
     ) {
         this.benchmarkEngine =
                 benchmarkEngine;
+
+        this.featureBank =
+                featureBank;
     }
 
     public synchronized ImprovementPlan createPlan() {
@@ -31,52 +36,71 @@ public class ImprovementPlanner {
                     0,
                     0,
                     "No benchmark data available.",
-                    List.of()
+                    List.of(),
+                    null,
+                    ""
             );
         }
 
-        Capability weakest =
-                capabilities.stream()
-                        .min(
-                                Comparator
-                                        .comparingInt(
-                                                Capability::score
-                                        )
-                        )
-                        .orElse(null);
+        Capability target =
+                selectTarget(capabilities);
 
-        if (weakest == null) {
+        if (target == null) {
 
             return new ImprovementPlan(
                     "unknown",
                     0,
                     0,
                     0,
-                    "Could not identify a target.",
-                    List.of()
+                    "Could not identify an improvement target.",
+                    List.of(),
+                    null,
+                    ""
             );
         }
 
         int gap =
                 Math.max(
                         0,
-                        100 - weakest.score()
+                        100 - target.score()
                 );
 
         int difficulty =
                 calculateDifficulty(
-                        weakest.score()
+                        target.score()
                 );
 
-        String topic =
-                getTopic(
-                        weakest.domain(),
-                        difficulty
+        SelfImprovementFeatureBank.Feature feature =
+                selectFeature(
+                        target.domain()
                 );
+
+        String topic;
+
+        String featureName = "";
+
+        if (feature != null) {
+
+            featureName =
+                    feature.name();
+
+            topic =
+                    buildFeatureResearchTopic(
+                            feature
+                    );
+
+        } else {
+
+            topic =
+                    getTopic(
+                            target.domain(),
+                            difficulty
+                    );
+        }
 
         return new ImprovementPlan(
-                weakest.domain(),
-                weakest.score(),
+                target.domain(),
+                target.score(),
                 gap,
                 difficulty,
                 topic,
@@ -85,7 +109,9 @@ public class ImprovementPlanner {
                         .map(
                                 Capability::domain
                         )
-                        .toList()
+                        .toList(),
+                feature,
+                featureName
         );
     }
 
@@ -94,27 +120,27 @@ public class ImprovementPlanner {
         List<Capability> result =
                 new ArrayList<>();
 
-        add(
+        addCapability(
                 result,
                 "knowledge"
         );
 
-        add(
+        addCapability(
                 result,
                 "reasoning"
         );
 
-        add(
+        addCapability(
                 result,
                 "research"
         );
 
-        add(
+        addCapability(
                 result,
                 "coding"
         );
 
-        add(
+        addCapability(
                 result,
                 "memory"
         );
@@ -122,7 +148,7 @@ public class ImprovementPlanner {
         return result;
     }
 
-    private void add(
+    private void addCapability(
             List<Capability> result,
             String domain
     ) {
@@ -143,6 +169,75 @@ public class ImprovementPlanner {
 
         } catch (Exception ignored) {
         }
+    }
+
+    private Capability selectTarget(
+            List<Capability> capabilities
+    ) {
+
+        return capabilities.stream()
+                .min(
+                        Comparator
+                                .comparingInt(
+                                        Capability::score
+                                )
+                )
+                .orElse(null);
+    }
+
+    private SelfImprovementFeatureBank.Feature selectFeature(
+            String domain
+    ) {
+
+        SelfImprovementFeatureBank.Feature feature =
+                featureBank.getHighestPriority(
+                        domain
+                );
+
+        if (feature != null) {
+            return feature;
+        }
+
+        return featureBank
+                .getHighestPriorityFeatures(1)
+                .stream()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private String buildFeatureResearchTopic(
+            SelfImprovementFeatureBank.Feature feature
+    ) {
+
+        return """
+                Research how to implement the following Blackwater capability.
+
+                Capability:
+                %s
+
+                Domain:
+                %s
+
+                Description:
+                %s
+
+                Priority:
+                %d
+
+                The research should identify:
+                - required backend changes
+                - required frontend changes
+                - required dependencies
+                - security considerations
+                - testing requirements
+                - compatibility risks
+                - a safe implementation approach
+                """.formatted(
+                feature.name(),
+                feature.domain(),
+                feature.description(),
+                feature.priority()
+        ).trim();
     }
 
     private int calculateDifficulty(
@@ -173,60 +268,74 @@ public class ImprovementPlanner {
             int difficulty
     ) {
 
-        String level =
-                switch (difficulty) {
-
-                    case 1 ->
-                            "fundamentals";
-
-                    case 2 ->
-                            "intermediate concepts";
-
-                    case 3 ->
-                            "advanced concepts";
-
-                    case 4 ->
-                            "expert-level concepts";
-
-                    default ->
-                            "research-frontier concepts";
-                };
-
         return switch (domain) {
 
             case "knowledge" ->
-                    "knowledge retrieval, "
-                            + "fact verification and "
-                            + level;
+                    "Improve knowledge retrieval, "
+                            + "verification and deduplication "
+                            + "at difficulty "
+                            + difficulty;
 
             case "reasoning" ->
-                    "logical reasoning, "
-                            + "multi-step inference and "
-                            + level;
+                    "Improve multi-step reasoning, "
+                            + "verification and problem solving "
+                            + "at difficulty "
+                            + difficulty;
 
             case "research" ->
-                    "web research, "
-                            + "source comparison, "
-                            + "verification and "
-                            + level;
+                    "Improve multi-source web research, "
+                            + "source comparison and verification "
+                            + "at difficulty "
+                            + difficulty;
 
             case "coding" ->
-                    "software engineering, "
-                            + "algorithms, debugging, "
-                            + "architecture and "
-                            + level;
+                    "Improve code generation, analysis, "
+                            + "testing and safe code evolution "
+                            + "at difficulty "
+                            + difficulty;
 
             case "memory" ->
-                    "memory retrieval, "
-                            + "context management, "
-                            + "long-term information organization "
-                            + "and "
-                            + level;
+                    "Improve long-term memory, relevance, "
+                            + "consolidation and recall "
+                            + "at difficulty "
+                            + difficulty;
 
             default ->
-                    "general artificial intelligence "
-                            + level;
+                    "Improve Blackwater capabilities "
+                            + "at difficulty "
+                            + difficulty;
         };
+    }
+
+    public synchronized List<SelfImprovementFeatureBank.Feature>
+    getAvailableFeatures() {
+
+        return featureBank.getAll();
+    }
+
+    public synchronized List<SelfImprovementFeatureBank.Feature>
+    getFeaturesForDomain(
+            String domain
+    ) {
+
+        return featureBank.getByDomain(
+                domain
+        );
+    }
+
+    public synchronized int totalFeatures() {
+
+        return featureBank.totalFeatures();
+    }
+
+    public synchronized int completedFeatures() {
+
+        return featureBank.completedFeatures();
+    }
+
+    public synchronized ImprovementPlan previewPlan() {
+
+        return createPlan();
     }
 
     public record Capability(
@@ -241,7 +350,9 @@ public class ImprovementPlanner {
             int gap,
             int difficulty,
             String researchTopic,
-            List<String> availableDomains
+            List<String> availableDomains,
+            SelfImprovementFeatureBank.Feature feature,
+            String featureName
     ) {
     }
 }
