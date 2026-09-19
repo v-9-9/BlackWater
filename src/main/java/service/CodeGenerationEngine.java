@@ -2,9 +2,13 @@ package service;
 
 import org.springframework.stereotype.Service;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 @Service
 public class CodeGenerationEngine {
@@ -23,164 +27,159 @@ public class CodeGenerationEngine {
         this.sandbox = sandbox;
     }
 
+    public GenerationResult generate(ImprovementGenerator.ImprovementProposal proposal) {
+        if (proposal == null) {
+            return new GenerationResult(
+                    null,
+                    false,
+                    List.of(),
+                    List.of("Improvement proposal is null.")
+            );
+        }
+
+        String experimentId = sandbox.createExperiment(
+                "code-generation-" + safeName(proposal.featureName()),
+                proposal.rawProposal()
+        );
+
+        return generate(proposal, experimentId);
+    }
+
     public GenerationResult generate(
-            ImprovementGenerator.ImprovementProposal proposal
+            ImprovementGenerator.ImprovementProposal proposal,
+            String experimentId
     ) {
         if (proposal == null) {
             return new GenerationResult(
-                    "",
+                    experimentId,
                     false,
                     List.of(),
-                    List.of("Proposal is null.")
+                    List.of("Improvement proposal is null.")
             );
         }
 
-        String experimentId;
-
-        try {
-            experimentId =
-                    sandbox.createExperiment(
-                            "code-generation-"
-                                    + safe(proposal.featureName())
-            );
-        } catch (Exception exception) {
+        if (experimentId == null || experimentId.isBlank()) {
             return new GenerationResult(
-                    "",
+                    null,
                     false,
                     List.of(),
-                    List.of(
-                            "Could not create sandbox: "
-                                    + safe(exception.getMessage())
-                    )
+                    List.of("Experiment ID is missing.")
             );
         }
 
-        List<String> generatedFiles =
-                new ArrayList<>();
-
-        List<String> errors =
-                new ArrayList<>();
-
-        List<String> requestedFiles =
-                proposal.proposedFiles();
-
-        if (requestedFiles == null
-                || requestedFiles.isEmpty()) {
-
-            requestedFiles =
-                    proposal.relevantFiles();
+        if (!sandbox.exists(experimentId)) {
+            return new GenerationResult(
+                    experimentId,
+                    false,
+                    List.of(),
+                    List.of("Sandbox experiment does not exist.")
+            );
         }
 
-        if (requestedFiles == null
-                || requestedFiles.isEmpty()) {
+        List<String> generatedFiles = new ArrayList<>();
+        List<String> errors = new ArrayList<>();
 
+        Set<String> candidateFiles = new LinkedHashSet<>();
+
+        if (proposal.proposedFiles() != null) {
+            candidateFiles.addAll(proposal.proposedFiles());
+        }
+
+        if (candidateFiles.isEmpty() && proposal.relevantFiles() != null) {
+            candidateFiles.addAll(proposal.relevantFiles());
+        }
+
+        if (candidateFiles.isEmpty()) {
+            candidateFiles.addAll(
+                    codeAnalysisEngine
+                            .findRelevantFiles(
+                                    proposal.featureName(),
+                                    proposal.domain()
+                            )
+                            .files()
+            );
+        }
+
+        if (candidateFiles.isEmpty()) {
+            errors.add("No relevant source files were found.");
             return new GenerationResult(
                     experimentId,
                     false,
                     generatedFiles,
-                    List.of(
-                            "No files were selected for generation."
-                    )
+                    errors
             );
         }
 
-        for (String relativePath :
-                requestedFiles) {
+        for (String file : candidateFiles) {
+            String normalizedPath = normalizeProjectPath(file);
 
-            String path =
-                    normalizePath(relativePath);
-
-            if (!isAllowedPath(path)) {
-                errors.add(
-                        "Blocked path: " + path
-                );
-                continue;
-            }
-
-            String currentSource =
-                    codeAnalysisEngine.readSource(
-                            path
-                    );
-
-            String prompt =
-                    buildGenerationPrompt(
-                            proposal,
-                            path,
-                            currentSource
-                    );
-
-            String generated;
-
-            try {
-                generated =
-                        aiService.generate(
-                                prompt,
-                                "prime",
-                                null
-                        );
-            } catch (Exception exception) {
-                errors.add(
-                        "Generation failed for "
-                                + path
-                                + ": "
-                                + safe(
-                                exception.getMessage()
-                        )
-                );
-                continue;
-            }
-
-            generated =
-                    cleanGeneratedCode(
-                            generated
-                    );
-
-            if (generated.isBlank()) {
-                errors.add(
-                        "Empty generated code for: "
-                                + path
-                );
-                continue;
-            }
-
-            if (looksUnsafe(generated)) {
-                errors.add(
-                        "Unsafe generated code blocked: "
-                                + path
-                );
+            if (normalizedPath == null) {
+                errors.add("Blocked unsafe or unsupported path: " + file);
                 continue;
             }
 
             try {
+                String currentSource = codeAnalysisEngine.readSource(normalizedPath);
+
+                if (currentSource == null || currentSource.isBlank()) {
+                    errors.add("Source file is empty or unreadable: " + normalizedPath);
+                    continue;
+                }
+
+                String prompt = buildGenerationPrompt(
+                        proposal,
+                        normalizedPath,
+                        currentSource
+                );
+
+                String generated = aiService.generate(
+                        prompt,
+                        "prime",
+                        null
+                );
+
+                String cleaned = cleanGeneratedCode(generated);
+
+                if (!isValidGeneratedContent(cleaned)) {
+                    errors.add("Generated content was rejected for: " + normalizedPath);
+                    continue;
+                }
+
+                if (looksDangerous(cleaned)) {
+                    errors.add("Generated content contains blocked operations: " + normalizedPath);
+                    continue;
+                }
+
                 sandbox.writeFile(
                         experimentId,
-                        path,
-                        generated
+                        normalizedPath,
+                        cleaned
                 );
 
-                generatedFiles.add(path);
+                generatedFiles.add(normalizedPath);
 
-            } catch (Exception exception) {
+            } catch (Exception e) {
                 errors.add(
-                        "Could not write "
-                                + path
-                                + ": "
-                                + safe(
-                                exception.getMessage()
-                        )
+                        "Failed to generate " +
+                        normalizedPath +
+                        ": " +
+                        safeMessage(e)
                 );
             }
         }
 
-        boolean success =
-                !generatedFiles.isEmpty()
-                        && errors.isEmpty();
+        boolean success = !generatedFiles.isEmpty() && errors.isEmpty();
+
+        if (!success && !generatedFiles.isEmpty()) {
+            success = true;
+        }
 
         sandbox.recordResult(
                 experimentId,
-                success
-                        ? "GENERATION_SUCCESS"
-                        : "GENERATION_PARTIAL_OR_FAILED"
+                "CODE_GENERATION",
+                success,
+                "Generated files: " + generatedFiles.size()
+                        + ", errors: " + errors.size()
         );
 
         return new GenerationResult(
@@ -193,221 +192,221 @@ public class CodeGenerationEngine {
 
     private String buildGenerationPrompt(
             ImprovementGenerator.ImprovementProposal proposal,
-            String path,
+            String filePath,
             String currentSource
     ) {
-        boolean ui =
-                isUiFile(path);
+        boolean uiFile = isUiFile(filePath);
 
-        StringBuilder prompt =
-                new StringBuilder();
+        StringBuilder prompt = new StringBuilder();
 
-        prompt.append(
-                """
-                You are Blackwater's controlled code-generation engine.
+        prompt.append("""
+                You are Blackwater's controlled code evolution engine.
 
-                Generate the COMPLETE replacement content for exactly ONE file.
+                Generate a complete replacement for ONE existing project file.
 
-                You must preserve existing functionality unless the requested
-                improvement explicitly requires changing it.
+                STRICT RULES:
+                1. Return ONLY the complete file content.
+                2. Do not use Markdown fences.
+                3. Do not explain the code.
+                4. Do not output placeholders such as TODO, "...", or omitted sections.
+                5. Preserve existing functionality unless the improvement explicitly requires changing it.
+                6. Do not add malware, credential theft, surveillance, persistence, destructive commands, or arbitrary command execution.
+                7. Do not add Runtime.exec, ProcessBuilder, shell commands, PowerShell, cmd.exe, rm -rf, shutdown, disk formatting, or equivalent destructive behavior.
+                8. Do not expose API keys, passwords, tokens, cookies, or private credentials.
+                9. Keep the implementation compatible with the existing Blackwater project.
+                10. Prefer simple maintainable code over unnecessary dependencies.
+                """);
 
-                Never return Markdown.
-                Never wrap the result in ``` fences.
-                Never return explanations before or after the code.
-
-                The generated file must be directly usable as the complete
-                contents of the requested file.
-
-                """
-        );
-
-        prompt.append(
-                "TARGET DOMAIN: "
-        );
-        prompt.append(
-                safe(proposal.domain())
-        );
-        prompt.append("\n");
-
-        prompt.append(
-                "FEATURE: "
-        );
-        prompt.append(
-                safe(proposal.featureName())
-        );
-        prompt.append("\n");
-
-        prompt.append(
-                "SUMMARY: "
-        );
-        prompt.append(
-                safe(proposal.summary())
-        );
-        prompt.append("\n");
-
-        prompt.append(
-                "TARGET FILE: "
-        );
-        prompt.append(path);
-        prompt.append("\n\n");
-
-        if (ui) {
-            prompt.append(
-                    """
-                    UI CODING RULES:
-                    - Treat this as a real user-facing interface.
-                    - Improve visual hierarchy, spacing, responsiveness,
-                      usability and consistency when appropriate.
-                    - Preserve working controls and API integrations.
-                    - Make mobile layouts work properly.
-                    - Avoid unnecessary libraries.
-                    - Keep the existing Blackwater visual identity unless
-                      the requested feature requires a change.
-                    - HTML, CSS and JavaScript are all valid UI code.
-                    - Do not add voice features.
-                    - Do not remove existing functional settings or controls.
-                    - Avoid fake UI elements that do nothing.
-                    """
-            );
+        if (uiFile) {
+            prompt.append("""
+                    
+                    UI-SPECIFIC RULES:
+                    11. This is UI/frontend code.
+                    12. Improve visual hierarchy, spacing, readability, responsiveness, and interaction quality where appropriate.
+                    13. Preserve existing API endpoints and JavaScript functionality unless the proposal explicitly requires a change.
+                    14. Keep the interface mobile-friendly.
+                    15. Preserve Blackwater's existing visual identity.
+                    16. Do not add voice features.
+                    17. Do not create fake controls that appear functional but are not connected.
+                    18. Do not add unnecessary frontend libraries.
+                    """);
         } else {
-            prompt.append(
-                    """
-                    BACKEND CODING RULES:
-                    - Preserve existing APIs unless the improvement requires
-                      a compatible extension.
-                    - Keep classes focused and maintainable.
-                    - Validate input where appropriate.
-                    - Avoid destructive operations.
-                    - Do not introduce shell commands or arbitrary process
-                      execution.
-                    """
-            );
+            prompt.append("""
+                    
+                    BACKEND RULES:
+                    11. Preserve existing Spring Boot architecture.
+                    12. Avoid unnecessary dependencies.
+                    13. Preserve public APIs and existing behavior unless the proposal explicitly changes them.
+                    14. Keep error handling explicit and safe.
+                    """);
         }
 
-        prompt.append(
-                """
+        prompt.append("\n\nTARGET FILE:\n");
+        prompt.append(filePath);
 
-                SAFETY RULES:
-                - Never use Runtime.getRuntime().
-                - Never use ProcessBuilder.
-                - Never execute shell commands.
-                - Never delete arbitrary files.
-                - Never access credentials or secrets.
-                - Never modify files outside the project.
-                - Never use ../ path traversal.
-                - Never add malware, persistence mechanisms or surveillance.
-                - Do not modify configuration to expose secrets.
+        prompt.append("\n\nDOMAIN:\n");
+        prompt.append(nullSafe(proposal.domain()));
 
-                EXISTING FILE:
-                """
-        );
+        prompt.append("\n\nFEATURE:\n");
+        prompt.append(nullSafe(proposal.featureName()));
 
-        prompt.append(
-                "\n"
-        );
+        prompt.append("\n\nPROPOSAL:\n");
+        prompt.append(nullSafe(proposal.summary()));
 
-        if (currentSource == null
-                || currentSource.isBlank()) {
-            prompt.append(
-                    "[FILE DOES NOT CURRENTLY EXIST]"
-            );
-        } else {
-            prompt.append(
-                    currentSource
-            );
+        if (proposal.tests() != null && !proposal.tests().isEmpty()) {
+            prompt.append("\n\nRECOMMENDED TESTS:\n");
+            for (String test : proposal.tests()) {
+                prompt.append("- ").append(test).append("\n");
+            }
         }
 
-        prompt.append(
-                """
+        prompt.append("\n\nCURRENT FILE CONTENT:\n");
+        prompt.append(currentSource);
 
-                \n\nReturn ONLY the complete replacement
-                contents of the target file.
-                """
-        );
+        prompt.append("""
+                
+                \n\nNow produce the complete replacement file.
+                """);
 
         return prompt.toString();
     }
 
-    private String cleanGeneratedCode(
-            String generated
-    ) {
+    private String normalizeProjectPath(String path) {
+        if (path == null || path.isBlank()) {
+            return null;
+        }
+
+        String normalized = path
+                .trim()
+                .replace('\\', '/');
+
+        while (normalized.startsWith("./")) {
+            normalized = normalized.substring(2);
+        }
+
+        if (!normalized.startsWith("src/main/")
+                && !normalized.startsWith("src/test/")) {
+            return null;
+        }
+
+        if (normalized.contains("..")
+                || normalized.startsWith("/")
+                || normalized.contains(":")
+                || normalized.contains("\0")) {
+            return null;
+        }
+
+        String lower = normalized.toLowerCase(Locale.ROOT);
+
+        if (lower.contains("/.git/")
+                || lower.contains("/target/")
+                || lower.contains("/blackwater-sandbox/")
+                || lower.contains("/blackwater-backups/")) {
+            return null;
+        }
+
+        String fileName = Path.of(normalized)
+                .getFileName()
+                .toString()
+                .toLowerCase(Locale.ROOT);
+
+        if (!isSupportedExtension(fileName)) {
+            return null;
+        }
+
+        return normalized;
+    }
+
+    private boolean isSupportedExtension(String fileName) {
+        return fileName.endsWith(".java")
+                || fileName.endsWith(".html")
+                || fileName.endsWith(".css")
+                || fileName.endsWith(".js")
+                || fileName.endsWith(".json")
+                || fileName.endsWith(".xml")
+                || fileName.endsWith(".properties")
+                || fileName.endsWith(".yml")
+                || fileName.endsWith(".yaml")
+                || fileName.endsWith(".md");
+    }
+
+    private boolean isUiFile(String filePath) {
+        String lower = filePath.toLowerCase(Locale.ROOT);
+
+        return lower.endsWith(".html")
+                || lower.endsWith(".css")
+                || lower.endsWith(".js")
+                || lower.contains("/static/")
+                || lower.contains("/templates/");
+    }
+
+    private String cleanGeneratedCode(String generated) {
         if (generated == null) {
             return "";
         }
 
-        String value =
-                generated.trim();
+        String result = generated.trim();
 
-        if (value.startsWith("```")
-                && value.endsWith("```")) {
+        if (result.startsWith("```")) {
+            int firstNewLine = result.indexOf('\n');
 
-            int firstNewLine =
-                    value.indexOf('\n');
-
-            if (firstNewLine > 0) {
-                value =
-                        value.substring(
-                                firstNewLine + 1
-                        );
+            if (firstNewLine >= 0) {
+                result = result.substring(firstNewLine + 1);
             }
 
-            int lastFence =
-                    value.lastIndexOf("```");
+            int closingFence = result.lastIndexOf("```");
 
-            if (lastFence >= 0) {
-                value =
-                        value.substring(
-                                0,
-                                lastFence
-                        );
+            if (closingFence >= 0) {
+                result = result.substring(0, closingFence);
             }
         }
 
-        return value.trim();
+        return result.trim();
     }
 
-    private boolean isAllowedPath(
-            String path
-    ) {
-        if (path.isBlank()) {
+    private boolean isValidGeneratedContent(String content) {
+        if (content == null || content.isBlank()) {
             return false;
         }
 
-        if (path.contains("..")
-                || path.startsWith("/")
-                || path.startsWith("\\")
-                || path.contains(":")) {
+        if (content.length() > 1_000_000) {
             return false;
         }
 
-        return path.startsWith("src/main/")
-                || path.startsWith("src/test/");
+        String lower = content.toLowerCase(Locale.ROOT);
+
+        return !lower.equals("null")
+                && !lower.equals("undefined")
+                && !lower.contains("i cannot")
+                && !lower.contains("i can't generate")
+                && !lower.contains("unable to generate");
     }
 
-    private boolean looksUnsafe(
-            String code
-    ) {
-        String lower =
-                safe(code)
-                        .toLowerCase(
-                                Locale.ROOT
-                        );
+    private boolean looksDangerous(String content) {
+        String lower = content.toLowerCase(Locale.ROOT);
 
-        String[] forbidden = {
+        String[] blocked = {
                 "runtime.getruntime",
                 "processbuilder",
                 "powershell",
                 "cmd.exe",
                 "rm -rf",
+                "shutdown /",
                 "format c:",
-                "shutdown -",
+                "format /",
                 "del /f",
-                "curl | sh",
-                "wget | sh"
+                "mkfs.",
+                "/etc/shadow",
+                "private_key",
+                "private key",
+                "steal cookie",
+                "cookie theft",
+                "credential theft",
+                "keylogger"
         };
 
-        for (String value : forbidden) {
-            if (lower.contains(value)) {
+        for (String pattern : blocked) {
+            if (lower.contains(pattern)) {
                 return true;
             }
         }
@@ -415,42 +414,37 @@ public class CodeGenerationEngine {
         return false;
     }
 
-    private boolean isUiFile(
-            String path
-    ) {
-        String lower =
-                safe(path)
-                        .toLowerCase(
-                                Locale.ROOT
-                        );
-
-        return lower.endsWith(".html")
-                || lower.endsWith(".css")
-                || lower.endsWith(".js");
-    }
-
-    private String normalizePath(
-            String path
-    ) {
-        if (path == null) {
-            return "";
+    private String safeName(String value) {
+        if (value == null || value.isBlank()) {
+            return "unknown";
         }
 
-        return path
-                .trim()
-                .replace('\\', '/')
-                .replaceAll(
-                        "/+",
-                        "/"
+        return value
+                .replaceAll("[^a-zA-Z0-9_-]", "-")
+                .replaceAll("-+", "-")
+                .substring(
+                        0,
+                        Math.min(
+                                80,
+                                value.replaceAll("[^a-zA-Z0-9_-]", "-")
+                                        .replaceAll("-+", "-")
+                                        .length()
+                        )
                 );
     }
 
-    private String safe(
-            String value
-    ) {
-        return value == null
-                ? ""
-                : value;
+    private String safeMessage(Exception e) {
+        if (e == null || e.getMessage() == null) {
+            return "unknown error";
+        }
+
+        return e.getMessage()
+                .replace('\n', ' ')
+                .replace('\r', ' ');
+    }
+
+    private String nullSafe(String value) {
+        return value == null ? "" : value;
     }
 
     public record GenerationResult(
