@@ -2,37 +2,41 @@ package service;
 
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class AIService {
 
-    private final List<AIProvider> providers;
+    private final OpenAIProvider openAIProvider;
+    private final GeminiProvider geminiProvider;
+    private final AnthropicProvider anthropicProvider;
+    private final CustomAIProvider customAIProvider;
+
     private final ConversationService conversationService;
     private final MemoryService memoryService;
     private final KnowledgeService knowledgeService;
+    private final ResearchEngine researchEngine;
 
     public AIService(
-            List<AIProvider> providers,
+            OpenAIProvider openAIProvider,
+            GeminiProvider geminiProvider,
+            AnthropicProvider anthropicProvider,
+            CustomAIProvider customAIProvider,
             ConversationService conversationService,
             MemoryService memoryService,
-            KnowledgeService knowledgeService
+            KnowledgeService knowledgeService,
+            ResearchEngine researchEngine
     ) {
-        this.providers = providers;
+        this.openAIProvider = openAIProvider;
+        this.geminiProvider = geminiProvider;
+        this.anthropicProvider = anthropicProvider;
+        this.customAIProvider = customAIProvider;
         this.conversationService = conversationService;
         this.memoryService = memoryService;
         this.knowledgeService = knowledgeService;
-    }
-
-    public String generate(String message) {
-        return generate(message, "swift", null);
-    }
-
-    public String generate(
-            String message,
-            String mode
-    ) {
-        return generate(message, mode, null);
+        this.researchEngine = researchEngine;
     }
 
     public String generate(
@@ -40,524 +44,650 @@ public class AIService {
             String mode,
             String conversationId
     ) {
+        String cleanMessage =
+                message == null ? "" : message.trim();
 
-        if (message == null || message.isBlank()) {
-            return "Message is empty.";
+        if (cleanMessage.isBlank()) {
+            return "اكتبلي شنو تريد وأنا أتعامل وياه.";
         }
 
-        String selectedMode =
+        String normalizedMode =
                 normalizeMode(mode);
 
         String conversationContext =
-                buildConversationContext(
-                        conversationId
-                );
+                buildConversationContext(conversationId);
 
         String memoryContext =
-                buildMemoryContext();
+                buildMemoryContext(cleanMessage);
 
         String knowledgeContext =
-                buildKnowledgeContext(
-                        message
+                buildKnowledgeContext(cleanMessage);
+
+        boolean shouldResearch =
+                shouldResearch(
+                        cleanMessage,
+                        normalizedMode
                 );
 
-        String prompt = buildPrompt(
-                message,
-                conversationContext,
-                memoryContext,
-                knowledgeContext
-        );
+        String researchContext = "";
 
-        /*
-         * API providers are optional.
-         *
-         * If an API provider is configured and has
-         * a working key, use it.
-         *
-         * If no provider can be used, Blackwater
-         * falls back to its internal engine.
-         */
+        if (shouldResearch) {
+            try {
+                ResearchEngine.ResearchResult research =
+                        researchEngine.research(cleanMessage);
 
-        String providerName =
-                System.getenv()
-                        .getOrDefault(
-                                "AI_PROVIDER",
-                                ""
-                        )
-                        .toLowerCase()
-                        .trim();
-
-        if (!providerName.isBlank()) {
-
-            String providerResponse =
-                    tryProvider(
-                            providerName,
-                            prompt,
-                            selectedMode
-                    );
-
-            if (isUsableResponse(
-                    providerResponse
-            )) {
-
-                return providerResponse;
+                researchContext =
+                        formatResearch(research);
+            } catch (Exception ignored) {
+                researchContext = "";
             }
         }
 
-        /*
-         * Try configured providers automatically.
-         *
-         * This allows Blackwater to continue working
-         * even if AI_PROVIDER is not explicitly set.
-         */
+        String prompt =
+                buildPrompt(
+                        cleanMessage,
+                        normalizedMode,
+                        conversationContext,
+                        memoryContext,
+                        knowledgeContext,
+                        researchContext
+                );
+
+        List<AIProvider> providers =
+                orderedProviders();
 
         for (AIProvider provider : providers) {
+            try {
+                String response =
+                        provider.generate(prompt);
 
-            String className =
-                    provider.getClass()
-                            .getSimpleName()
-                            .toLowerCase();
-
-            String response =
-                    tryProvider(
-                            className,
-                            prompt,
-                            selectedMode
-                    );
-
-            if (isUsableResponse(response)) {
-                return response;
+                if (isUsableResponse(response)) {
+                    return response.trim();
+                }
+            } catch (Exception ignored) {
             }
         }
 
-        /*
-         * No external AI provider is available.
-         *
-         * Use Blackwater's internal engine.
-         */
-
         return internalResponse(
-                message,
-                conversationContext,
-                memoryContext,
-                knowledgeContext
+                cleanMessage,
+                normalizedMode,
+                knowledgeContext,
+                researchContext
         );
     }
 
-    private String tryProvider(
-            String providerName,
-            String prompt,
-            String mode
-    ) {
+    private List<AIProvider> orderedProviders() {
+        List<AIProvider> providers =
+                new ArrayList<>();
 
-        for (AIProvider provider : providers) {
+        String configured =
+                System.getenv(
+                        "AI_PROVIDER"
+                );
 
-            String className =
-                    provider.getClass()
-                            .getSimpleName()
-                            .toLowerCase();
-
-            if (!className.startsWith(
-                    providerName
-            )
-                    && !providerName.startsWith(
-                            className.replace(
-                                    "provider",
-                                    ""
-                            )
-                    )) {
-
-                continue;
-            }
-
-            try {
-
-                if (provider instanceof OpenAIProvider openAI) {
-
-                    return openAI.generate(
-                            prompt,
-                            mode
-                    );
-                }
-
-                if (provider instanceof GeminiProvider gemini) {
-
-                    return gemini.generate(
-                            prompt,
-                            mode
-                    );
-                }
-
-                if (provider instanceof AnthropicProvider anthropic) {
-
-                    return anthropic.generate(
-                            prompt,
-                            mode
-                    );
-                }
-
-                if (provider instanceof CustomAIProvider custom) {
-
-                    return custom.generate(
-                            prompt,
-                            mode
-                    );
-                }
-
-                return provider.generate(prompt);
-
-            } catch (Exception ignored) {
-
-                return "";
-            }
+        if (configured == null
+                || configured.isBlank()) {
+            configured = "openai";
         }
 
-        return "";
+        switch (
+                configured
+                        .trim()
+                        .toLowerCase(Locale.ROOT)
+        ) {
+            case "gemini":
+            case "google":
+                providers.add(geminiProvider);
+                break;
+
+            case "anthropic":
+            case "claude":
+                providers.add(anthropicProvider);
+                break;
+
+            case "custom":
+                providers.add(customAIProvider);
+                break;
+
+            default:
+                providers.add(openAIProvider);
+                break;
+        }
+
+        addIfMissing(providers, openAIProvider);
+        addIfMissing(providers, geminiProvider);
+        addIfMissing(providers, anthropicProvider);
+        addIfMissing(providers, customAIProvider);
+
+        return providers;
+    }
+
+    private void addIfMissing(
+            List<AIProvider> providers,
+            AIProvider provider
+    ) {
+        if (!providers.contains(provider)) {
+            providers.add(provider);
+        }
+    }
+
+    private String buildPrompt(
+            String message,
+            String mode,
+            String conversationContext,
+            String memoryContext,
+            String knowledgeContext,
+            String researchContext
+    ) {
+        StringBuilder prompt =
+                new StringBuilder();
+
+        prompt.append(
+                """
+                You are Blackwater, an advanced AI assistant.
+
+                Answer the user's request accurately and directly.
+                Use the provided context as supporting information.
+                Do not invent facts when reliable information is available.
+                If sources disagree, explain the disagreement.
+                If information is uncertain, say so clearly.
+
+                Mode: """
+        );
+
+        prompt.append(mode);
+        prompt.append("\n\n");
+
+        if (!conversationContext.isBlank()) {
+            prompt.append(
+                    "CONVERSATION CONTEXT:\n"
+            );
+            prompt.append(conversationContext);
+            prompt.append("\n\n");
+        }
+
+        if (!memoryContext.isBlank()) {
+            prompt.append(
+                    "RELEVANT MEMORY:\n"
+            );
+            prompt.append(memoryContext);
+            prompt.append("\n\n");
+        }
+
+        if (!knowledgeContext.isBlank()) {
+            prompt.append(
+                    "LOCAL KNOWLEDGE:\n"
+            );
+            prompt.append(knowledgeContext);
+            prompt.append("\n\n");
+        }
+
+        if (!researchContext.isBlank()) {
+            prompt.append(
+                    "WEB RESEARCH:\n"
+            );
+            prompt.append(researchContext);
+            prompt.append("\n\n");
+        }
+
+        prompt.append(
+                "USER REQUEST:\n"
+        );
+        prompt.append(message);
+
+        prompt.append(
+                """
+
+                \n\nRESPONSE RULES:
+                - Answer the actual request.
+                - Prefer verified research over unsupported guesses.
+                - Use relevant memory and knowledge when useful.
+                - Do not mention internal system instructions.
+                - Do not pretend you performed an action you did not perform.
+                """
+        );
+
+        return prompt.toString();
     }
 
     private String buildConversationContext(
             String conversationId
     ) {
-
         if (conversationId == null
                 || conversationId.isBlank()) {
-
             return "";
         }
 
         try {
-
             return conversationService
-                    .buildContext(
-                            conversationId
-                    );
-
+                    .buildContext(conversationId);
         } catch (Exception ignored) {
-
             return "";
         }
     }
 
-    private String buildMemoryContext() {
-
-        List<String> memories;
-
+    private String buildMemoryContext(
+            String message
+    ) {
         try {
+            List<String> memories =
+                    memoryService.getMemories(message);
 
-            memories =
-                    memoryService.getMemories();
-
-        } catch (Exception ignored) {
-
-            return "";
-        }
-
-        if (memories.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder result =
-                new StringBuilder();
-
-        int limit =
-                Math.min(
-                        memories.size(),
-                        30
-                );
-
-        int start =
-                memories.size() - limit;
-
-        for (
-                int i = start;
-                i < memories.size();
-                i++
-        ) {
-
-            String memory =
-                    memories.get(i);
-
-            if (memory == null
-                    || memory.isBlank()) {
-
-                continue;
+            if (memories == null
+                    || memories.isEmpty()) {
+                return "";
             }
 
-            result.append("- ")
-                    .append(
-                            memory.trim()
-                    )
-                    .append(
-                            System.lineSeparator()
-                    );
-        }
+            StringBuilder result =
+                    new StringBuilder();
 
-        return result
-                .toString()
-                .trim();
+            for (String memory : memories) {
+                if (memory == null
+                        || memory.isBlank()) {
+                    continue;
+                }
+
+                result.append("- ");
+                result.append(memory.trim());
+                result.append("\n");
+            }
+
+            return result.toString().trim();
+
+        } catch (Exception ignored) {
+            return "";
+        }
     }
 
     private String buildKnowledgeContext(
             String message
     ) {
-
-        List<String> knowledge;
-
         try {
+            List<KnowledgeEntry> results =
+                    knowledgeService.search(message);
 
-            knowledge =
-                    knowledgeService.search(
-                            message
-                    );
+            if (results == null
+                    || results.isEmpty()) {
+                return "";
+            }
+
+            StringBuilder result =
+                    new StringBuilder();
+
+            int count = 0;
+
+            for (KnowledgeEntry entry : results) {
+                if (entry == null) {
+                    continue;
+                }
+
+                result.append(
+                        formatKnowledge(entry)
+                );
+
+                result.append("\n\n");
+
+                count++;
+
+                if (count >= 12) {
+                    break;
+                }
+            }
+
+            return result.toString().trim();
 
         } catch (Exception ignored) {
-
             return "";
         }
+    }
 
-        if (knowledge.isEmpty()) {
+    private String formatKnowledge(
+            KnowledgeEntry entry
+    ) {
+        StringBuilder result =
+                new StringBuilder();
+
+        if (!safe(entry.title()).isBlank()) {
+            result.append(
+                    "Title: "
+            );
+            result.append(
+                    safe(entry.title())
+            );
+            result.append("\n");
+        }
+
+        if (!safe(entry.topic()).isBlank()) {
+            result.append(
+                    "Topic: "
+            );
+            result.append(
+                    safe(entry.topic())
+            );
+            result.append("\n");
+        }
+
+        result.append(
+                "Content: "
+        );
+        result.append(
+                safe(entry.content())
+        );
+
+        if (!safe(entry.source()).isBlank()) {
+            result.append("\nSource: ");
+            result.append(
+                    safe(entry.source())
+            );
+        }
+
+        if (!safe(entry.sourceUrl()).isBlank()) {
+            result.append("\nURL: ");
+            result.append(
+                    safe(entry.sourceUrl())
+            );
+        }
+
+        result.append(
+                "\nConfidence: "
+        );
+        result.append(
+                String.format(
+                        Locale.ROOT,
+                        "%.2f",
+                        entry.confidence()
+                )
+        );
+
+        return result.toString();
+    }
+
+    private String formatResearch(
+            ResearchEngine.ResearchResult research
+    ) {
+        if (research == null
+                || research.sources() == null
+                || research.sources().isEmpty()) {
             return "";
         }
 
         StringBuilder result =
                 new StringBuilder();
 
-        int limit =
-                Math.min(
-                        knowledge.size(),
-                        10
-                );
+        result.append(
+                "Research question: "
+        );
+        result.append(
+                safe(research.question())
+        );
+        result.append("\n");
 
-        for (
-                int i = 0;
-                i < limit;
-                i++
-        ) {
+        result.append(
+                "Sources found: "
+        );
+        result.append(
+                research.sourceCount()
+        );
+        result.append("\n\n");
 
-            String entry =
-                    knowledge.get(i);
+        int count = 0;
 
-            if (entry == null
-                    || entry.isBlank()) {
+        for (ResearchEngine.SourceResult source
+                : research.sources()) {
 
+            if (source == null) {
                 continue;
             }
 
-            result.append("- ")
-                    .append(
-                            entry.trim()
+            result.append(
+                    "SOURCE "
+            );
+            result.append(
+                    count + 1
+            );
+            result.append("\n");
+
+            if (!safe(source.source()).isBlank()) {
+                result.append(
+                        "Provider: "
+                );
+                result.append(
+                        source.source()
+                );
+                result.append("\n");
+            }
+
+            if (!safe(source.title()).isBlank()) {
+                result.append(
+                        "Title: "
+                );
+                result.append(
+                        source.title()
+                );
+                result.append("\n");
+            }
+
+            if (!safe(source.url()).isBlank()) {
+                result.append(
+                        "URL: "
+                );
+                result.append(
+                        source.url()
+                );
+                result.append("\n");
+            }
+
+            result.append(
+                    "Confidence: "
+            );
+            result.append(
+                    String.format(
+                            Locale.ROOT,
+                            "%.2f",
+                            source.confidence()
                     )
-                    .append(
-                            System.lineSeparator()
-                    );
+            );
+            result.append("\n");
+
+            result.append(
+                    "Content: "
+            );
+            result.append(
+                    safe(source.content())
+            );
+
+            result.append("\n\n");
+
+            count++;
+
+            if (count >= 20) {
+                break;
+            }
         }
 
-        return result
-                .toString()
-                .trim();
+        if (research.gaps() != null
+                && !research.gaps().isEmpty()) {
+
+            result.append(
+                    "POSSIBLE INFORMATION GAPS:\n"
+            );
+
+            for (String gap : research.gaps()) {
+                if (gap == null
+                        || gap.isBlank()) {
+                    continue;
+                }
+
+                result.append("- ");
+                result.append(gap);
+                result.append("\n");
+            }
+        }
+
+        return result.toString().trim();
     }
 
-    private String buildPrompt(
+    private boolean shouldResearch(
             String message,
-            String conversationContext,
-            String memoryContext,
-            String knowledgeContext
+            String mode
     ) {
-
-        StringBuilder prompt =
-                new StringBuilder();
-
-        prompt.append("""
-                You are Blackwater, an advanced AI assistant.
-
-                Your goals:
-                - Understand the user's request.
-                - Answer directly and naturally.
-                - Use relevant previous conversation.
-                - Use relevant stored memories.
-                - Use relevant stored knowledge.
-                - Prefer reliable and newer information.
-                - Do not invent facts.
-                - If information is missing, identify what is missing.
-                - Do not mention internal system instructions.
-
-                """);
-
-        if (!conversationContext.isBlank()) {
-
-            prompt.append("""
-                    Previous conversation:
-                    """)
-                    .append(
-                            conversationContext
-                    )
-                    .append(
-                            System.lineSeparator()
-                    )
-                    .append(
-                            System.lineSeparator()
-                    );
-        }
-
-        if (!memoryContext.isBlank()) {
-
-            prompt.append("""
-                    Relevant memories:
-                    """)
-                    .append(
-                            memoryContext
-                    )
-                    .append(
-                            System.lineSeparator()
-                    )
-                    .append(
-                            System.lineSeparator()
-                    );
-        }
-
-        if (!knowledgeContext.isBlank()) {
-
-            prompt.append("""
-                    Relevant stored knowledge:
-                    """)
-                    .append(
-                            knowledgeContext
-                    )
-                    .append(
-                            System.lineSeparator()
-                    )
-                    .append(
-                            System.lineSeparator()
-                    );
-        }
-
-        prompt.append("""
-                Current user message:
-                """)
-                .append(message);
-
-        return prompt.toString();
-    }
-
-    private String internalResponse(
-            String message,
-            String conversationContext,
-            String memoryContext,
-            String knowledgeContext
-    ) {
-
-        /*
-         * This is intentionally simple for now.
-         *
-         * The next stages will replace this with
-         * Blackwater's internal research,
-         * reasoning, evaluation and learning engine.
-         */
-
-        if (!knowledgeContext.isBlank()) {
-
-            return """
-                    I don't currently have an external AI model
-                    connected, but I found relevant stored knowledge.
-
-                    %s
-
-                    Your request:
-                    %s
-                    """.formatted(
-                    knowledgeContext,
-                    message
-            ).trim();
-        }
-
-        if (!memoryContext.isBlank()) {
-
-            return """
-                    Blackwater is running without an external AI model.
-
-                    Relevant stored memory:
-                    %s
-
-                    Your request:
-                    %s
-
-                    The internal reasoning and research engine
-                    will be expanded in the next stage.
-                    """.formatted(
-                    memoryContext,
-                    message
-            ).trim();
-        }
-
-        return """
-                Blackwater is running in internal mode.
-
-                No external AI provider is currently available.
-
-                Your request:
-                %s
-
-                The internal research, reasoning and learning
-                engine is ready to be expanded.
-                """.formatted(
-                message
-        ).trim();
-    }
-
-    private boolean isUsableResponse(
-            String response
-    ) {
-
-        if (response == null
-                || response.isBlank()) {
-
-            return false;
+        if ("deep".equals(mode)
+                || "prime".equals(mode)) {
+            return true;
         }
 
         String lower =
-                response
-                        .toLowerCase()
-                        .trim();
-
-        return !lower.contains(
-                "api_key is not configured"
-        )
-                && !lower.contains(
-                        "api key is not configured"
-                )
-                && !lower.contains(
-                        "provider not configured"
-                )
-                && !lower.contains(
-                        "request failed:"
+                message.toLowerCase(
+                        Locale.ROOT
                 );
+
+        String[] researchSignals = {
+                "search",
+                "research",
+                "latest",
+                "today",
+                "current",
+                "recent",
+                "source",
+                "sources",
+                "according",
+                "compare",
+                "comparison",
+                "documentation",
+                "docs",
+                "github",
+                "reddit",
+                "youtube",
+                "tiktok",
+                "instagram",
+                "google",
+                "price",
+                "سعر",
+                "اسعار",
+                "آخر",
+                "اخر",
+                "اليوم",
+                "حاليا",
+                "حالياً",
+                "ابحث",
+                "بحث",
+                "مصادر",
+                "قارن",
+                "مقارنة",
+                "توثيق"
+        };
+
+        for (String signal : researchSignals) {
+            if (lower.contains(signal)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private String normalizeMode(
             String mode
     ) {
-
-        if (mode == null
-                || mode.isBlank()) {
-
+        if (mode == null) {
             return "swift";
         }
 
         return switch (
-                mode.toLowerCase().trim()
+                mode.trim().toLowerCase(Locale.ROOT)
         ) {
-
-            case "swift", "fast" ->
-                    "swift";
-
-            case "deep" ->
-                    "deep";
-
-            case "prime", "powerful" ->
-                    "prime";
-
-            default ->
-                    "swift";
+            case "deep" -> "deep";
+            case "prime" -> "prime";
+            default -> "swift";
         };
+    }
+
+    private boolean isUsableResponse(
+            String response
+    ) {
+        if (response == null) {
+            return false;
+        }
+
+        String value =
+                response.trim();
+
+        if (value.isBlank()) {
+            return false;
+        }
+
+        String lower =
+                value.toLowerCase(
+                        Locale.ROOT
+                );
+
+        String[] invalidSignals = {
+                "openai_api_key is not configured",
+                "openai api key is not configured",
+                "api key is not configured",
+                "gemini_api_key is not configured",
+                "anthropic_api_key is not configured",
+                "custom_ai_api_key is not configured",
+                "authentication failed",
+                "invalid api key",
+                "unauthorized",
+                "401 unauthorized"
+        };
+
+        for (String signal : invalidSignals) {
+            if (lower.contains(signal)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private String internalResponse(
+            String message,
+            String mode,
+            String knowledgeContext,
+            String researchContext
+    ) {
+        StringBuilder response =
+                new StringBuilder();
+
+        response.append(
+                "Blackwater يعمل بالوضع الداخلي حالياً.\n\n"
+        );
+
+        if (!researchContext.isBlank()) {
+            response.append(
+                    "بحثت بالمصادر المتاحة وجمعت المعلومات التالية:\n\n"
+            );
+
+            response.append(
+                    researchContext
+            );
+
+            return response.toString();
+        }
+
+        if (!knowledgeContext.isBlank()) {
+            response.append(
+                    "عندي معرفة مخزنة مرتبطة بطلبك:\n\n"
+            );
+
+            response.append(
+                    knowledgeContext
+            );
+
+            return response.toString();
+        }
+
+        response.append(
+                "ما عندي حالياً مصدر معرفة كافي حتى أعطيك جواب موثوق عن هذا الطلب."
+        );
+
+        return response.toString();
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
     }
 }
