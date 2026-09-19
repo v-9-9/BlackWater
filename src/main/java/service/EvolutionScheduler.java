@@ -1,39 +1,68 @@
-package controller;
+package service;
 
-import org.springframework.web.bind.annotation.CrossOrigin;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-import service.BenchmarkEngine;
+import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.stereotype.Service;
 
-@RestController
-@RequestMapping("/api/benchmark")
-@CrossOrigin(origins = "*")
-public class BenchmarkController {
+@Service
+public class EvolutionScheduler {
 
-    private final BenchmarkEngine benchmarkEngine;
+    private final EvolutionEngine evolutionEngine;
 
-    public BenchmarkController(
-            BenchmarkEngine benchmarkEngine
+    public EvolutionScheduler(
+            EvolutionEngine evolutionEngine
     ) {
-        this.benchmarkEngine =
-                benchmarkEngine;
+        this.evolutionEngine =
+                evolutionEngine;
     }
 
-    @GetMapping("/{domain}")
-    public BenchmarkEngine.BenchmarkResult run(
-            @PathVariable String domain
-    ) {
+    @Scheduled(
+            fixedDelayString = "${blackwater.evolution.interval-ms:3600000}"
+    )
+    public void runEvolutionCycle() {
 
-        return benchmarkEngine.run(
-                domain
+        try {
+            evolutionEngine.evolveOnce();
+        } catch (Exception ignored) {
+        }
+    }
+
+    public EvolutionEngine.EvolutionState getState() {
+        return evolutionEngine.getState();
+    }
+
+    public EvolutionEngine.EvolutionCycle evolveNow() {
+        return evolutionEngine.evolveOnce();
+    }
+
+    public void start() {
+        evolutionEngine.start();
+    }
+
+    public void pause() {
+        evolutionEngine.pause();
+    }
+
+    public void resume() {
+        evolutionEngine.resume();
+    }
+
+    public void setDomainEnabled(
+            String domain,
+            boolean enabled
+    ) {
+        evolutionEngine.setDomainEnabled(
+                domain,
+                enabled
         );
     }
 
-    @GetMapping("/all")
-    public BenchmarkEngine.BenchmarkSummary all() {
-
-        return benchmarkEngine.runAll();
+    public void setPriority(
+            String domain,
+            int priority
+    ) {
+        evolutionEngine.setPriority(
+                domain,
+                priority
+        );
     }
 }
