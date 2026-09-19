@@ -3,12 +3,14 @@ package controller;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 import service.AIService;
 import service.AttachmentService;
 import service.ConversationService;
 
-import java.util.*;
-import java.util.stream.Collectors;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api")
@@ -28,243 +30,466 @@ public class ChatController {
         this.attachmentService = attachmentService;
     }
 
-    @PostMapping("/chat")
-    public ResponseEntity<?> chat(@RequestBody ChatRequest request) {
+    @PostMapping(
+            value = "/chat",
+            consumes = MediaType.APPLICATION_JSON_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
+    )
+    public ResponseEntity<?> chat(
+            @RequestBody ChatRequest request
+    ) {
         try {
-            String message = request.message() == null ? "" : request.message().trim();
+            String message = request.message() == null
+                    ? ""
+                    : request.message().trim();
 
-            if (message.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "error", "Message cannot be empty"
-                ));
+            if (message.isBlank()) {
+                return ResponseEntity.badRequest().body(
+                        Map.of("error", "Message cannot be empty.")
+                );
             }
 
-            String conversationId = normalizeConversationId(request.conversationId());
             String mode = normalizeMode(request.mode());
 
-            String response = aiService.generate(
-                    message,
-                    mode,
-                    conversationId
+            String conversationId =
+                    normalizeConversationId(request.conversationId());
+
+            if (conversationId == null) {
+                conversationId =
+                        conversationService.createConversation();
+            }
+
+            conversationService.saveMessage(
+                    conversationId,
+                    "user",
+                    message
             );
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "conversationId", conversationId,
-                    "mode", mode,
-                    "message", response
-            ));
+            String response =
+                    aiService.generate(
+                            message,
+                            mode,
+                            conversationId
+                    );
+
+            conversationService.saveMessage(
+                    conversationId,
+                    "assistant",
+                    response
+            );
+
+            return ResponseEntity.ok(
+                    Map.of(
+                            "response", response,
+                            "conversationId", conversationId,
+                            "mode", mode
+                    )
+            );
 
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage() == null ? "Chat failed" : e.getMessage()
-            ));
+            return ResponseEntity
+                    .internalServerError()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    "Could not process chat request."
+                            )
+                    );
         }
     }
 
     @PostMapping(
             value = "/chat/with-attachments",
-            consumes = MediaType.MULTIPART_FORM_DATA_VALUE
+            consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
+            produces = MediaType.APPLICATION_JSON_VALUE
     )
     public ResponseEntity<?> chatWithAttachments(
-            @RequestParam(value = "message", required = false) String message,
-            @RequestParam(value = "mode", required = false) String mode,
-            @RequestParam(value = "conversationId", required = false) String conversationId,
-            @RequestParam(value = "attachmentIds", required = false) String attachmentIds
+            @RequestParam(value = "message", required = false)
+            String message,
+
+            @RequestParam(value = "mode", required = false)
+            String mode,
+
+            @RequestParam(
+                    value = "conversationId",
+                    required = false
+            )
+            String conversationId,
+
+            @RequestParam(
+                    value = "attachmentIds",
+                    required = false
+            )
+            List<String> attachmentIds,
+
+            @RequestPart(
+                    value = "files",
+                    required = false
+            )
+            List<MultipartFile> files
     ) {
         try {
-            String cleanMessage = message == null ? "" : message.trim();
-            String cleanMode = normalizeMode(mode);
-            String cleanConversationId = normalizeConversationId(conversationId);
+            String cleanMessage =
+                    message == null
+                            ? ""
+                            : message.trim();
 
-            List<String> ids = parseAttachmentIds(attachmentIds);
+            String cleanMode =
+                    normalizeMode(mode);
 
-            if (cleanMessage.isEmpty() && ids.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of(
-                        "success", false,
-                        "error", "Message or attachment is required"
-                ));
+            String cleanConversationId =
+                    normalizeConversationId(conversationId);
+
+            if (cleanConversationId == null) {
+                cleanConversationId =
+                        conversationService.createConversation();
             }
 
-            List<AttachmentService.AttachmentInfo> attachments = new ArrayList<>();
-            List<String> attachmentContext = new ArrayList<>();
+            List<String> resolvedAttachmentIds =
+                    new ArrayList<>();
 
-            for (String id : ids) {
-                if (!attachmentService.exists(id)) {
-                    continue;
-                }
+            if (attachmentIds != null) {
+                for (String id : attachmentIds) {
+                    if (id == null || id.isBlank()) {
+                        continue;
+                    }
 
-                AttachmentService.AttachmentInfo info = attachmentService.get(id);
-                attachments.add(info);
-
-                if (attachmentService.isText(id)) {
-                    String text = attachmentService.readText(id);
-
-                    if (text != null && !text.isBlank()) {
-                        attachmentContext.add(
-                                "FILE: " + info.originalName() + "\n" +
-                                text
+                    if (attachmentService.exists(id.trim())) {
+                        resolvedAttachmentIds.add(
+                                id.trim()
                         );
                     }
-                } else if (attachmentService.isImage(id)) {
-                    attachmentContext.add(
-                            "IMAGE: " + info.originalName() +
-                            "\nThe user attached this image. Image ID: " + id
-                    );
-                } else {
-                    attachmentContext.add(
-                            "ATTACHMENT: " + info.originalName() +
-                            "\nType: " + info.type() +
-                            "\nContent-Type: " + info.contentType()
+                }
+            }
+
+            if (files != null) {
+                for (MultipartFile file : files) {
+                    if (file == null || file.isEmpty()) {
+                        continue;
+                    }
+
+                    AttachmentService.Attachment attachment =
+                            attachmentService.save(file);
+
+                    resolvedAttachmentIds.add(
+                            attachment.id()
                     );
                 }
             }
 
-            String enrichedMessage = buildAttachmentMessage(
-                    cleanMessage,
-                    attachmentContext
+            if (cleanMessage.isBlank()
+                    && resolvedAttachmentIds.isEmpty()) {
+
+                return ResponseEntity.badRequest().body(
+                        Map.of(
+                                "error",
+                                "Message or attachment is required."
+                        )
+                );
+            }
+
+            String attachmentContext =
+                    buildAttachmentContext(
+                            resolvedAttachmentIds
+                    );
+
+            String prompt =
+                    buildAttachmentPrompt(
+                            cleanMessage,
+                            attachmentContext
+                    );
+
+            conversationService.saveMessage(
+                    cleanConversationId,
+                    "user",
+                    cleanMessage.isBlank()
+                            ? "[Attachment]"
+                            : cleanMessage
             );
 
-            String response = aiService.generate(
-                    enrichedMessage,
-                    cleanMode,
-                    cleanConversationId
+            String response =
+                    aiService.generate(
+                            prompt,
+                            cleanMode,
+                            cleanConversationId
+                    );
+
+            conversationService.saveMessage(
+                    cleanConversationId,
+                    "assistant",
+                    response
             );
 
-            List<Map<String, Object>> attachmentResults = attachments.stream()
-                    .map(info -> Map.<String, Object>of(
-                            "id", info.id(),
-                            "name", info.originalName(),
-                            "type", info.type(),
-                            "size", info.size(),
-                            "contentType", info.contentType(),
-                            "url", "/api/attachments/" + info.id()
-                    ))
-                    .collect(Collectors.toList());
+            return ResponseEntity.ok(
+                    Map.of(
+                            "response", response,
+                            "conversationId",
+                            cleanConversationId,
+                            "mode", cleanMode,
+                            "attachmentIds",
+                            resolvedAttachmentIds
+                    )
+            );
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "conversationId", cleanConversationId,
-                    "mode", cleanMode,
-                    "message", response,
-                    "attachments", attachmentResults
-            ));
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(
+                    Map.of(
+                            "error",
+                            e.getMessage() == null
+                                    ? "Invalid attachment."
+                                    : e.getMessage()
+                    )
+            );
 
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage() == null
-                            ? "Chat with attachments failed"
-                            : e.getMessage()
-            ));
+            return ResponseEntity
+                    .internalServerError()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    "Could not process attachments."
+                            )
+                    );
         }
     }
 
     @GetMapping("/conversations")
     public ResponseEntity<?> conversations() {
         try {
-            return ResponseEntity.ok(conversationService.list());
+            return ResponseEntity.ok(
+                    conversationService.list()
+            );
+
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage() == null
-                            ? "Unable to load conversations"
-                            : e.getMessage()
-            ));
+            return ResponseEntity
+                    .internalServerError()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    "Could not load conversations."
+                            )
+                    );
         }
     }
 
     @GetMapping("/conversations/{id}")
-    public ResponseEntity<?> getConversation(@PathVariable String id) {
+    public ResponseEntity<?> getConversation(
+            @PathVariable String id
+    ) {
         try {
             return ResponseEntity.ok(
                     conversationService.get(id)
             );
+
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(
+                    Map.of(
+                            "error",
+                            e.getMessage() == null
+                                    ? "Invalid conversation."
+                                    : e.getMessage()
+                    )
+            );
+
         } catch (Exception e) {
-            return ResponseEntity.notFound().build();
+            return ResponseEntity
+                    .notFound()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    "Conversation not found."
+                            )
+                    );
         }
     }
 
     @DeleteMapping("/conversations/{id}")
-    public ResponseEntity<?> deleteConversation(@PathVariable String id) {
+    public ResponseEntity<?> deleteConversation(
+            @PathVariable String id
+    ) {
         try {
-            boolean deleted = conversationService.delete(id);
+            boolean deleted =
+                    conversationService.delete(id);
 
             if (!deleted) {
-                return ResponseEntity.notFound().build();
+                return ResponseEntity
+                        .notFound()
+                        .body(
+                                Map.of(
+                                        "error",
+                                        "Conversation not found."
+                                )
+                        );
             }
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "conversationId", id
-            ));
+            return ResponseEntity.ok(
+                    Map.of(
+                            "deleted",
+                            true,
+                            "conversationId",
+                            id
+                    )
+            );
 
         } catch (Exception e) {
-            return ResponseEntity.internalServerError().body(Map.of(
-                    "success", false,
-                    "error", e.getMessage() == null
-                            ? "Unable to delete conversation"
-                            : e.getMessage()
-            ));
+            return ResponseEntity
+                    .internalServerError()
+                    .body(
+                            Map.of(
+                                    "error",
+                                    "Could not delete conversation."
+                            )
+                    );
         }
     }
 
-    private String buildAttachmentMessage(
-            String message,
-            List<String> attachmentContext
+    private String buildAttachmentContext(
+            List<String> attachmentIds
     ) {
-        if (attachmentContext.isEmpty()) {
-            return message;
+        if (attachmentIds == null
+                || attachmentIds.isEmpty()) {
+            return "";
         }
 
-        StringBuilder result = new StringBuilder();
+        StringBuilder context =
+                new StringBuilder();
+
+        context.append(
+                "\n\nATTACHMENTS PROVIDED BY USER:\n"
+        );
+
+        for (String id : attachmentIds) {
+            try {
+                AttachmentService.AttachmentInfo info =
+                        attachmentService.get(id);
+
+                context.append(
+                        "\n--- Attachment: "
+                );
+
+                context.append(
+                        info.originalName()
+                );
+
+                context.append(" ---\n");
+
+                context.append(
+                        "Type: "
+                );
+
+                context.append(
+                        info.type()
+                );
+
+                context.append("\n");
+
+                context.append(
+                        "Content type: "
+                );
+
+                context.append(
+                        info.contentType()
+                );
+
+                context.append("\n");
+
+                if (attachmentService.isText(id)) {
+                    String text =
+                            attachmentService.readText(id);
+
+                    context.append(
+                            "Text content:\n"
+                    );
+
+                    context.append(
+                            limitText(text)
+                    );
+
+                    context.append("\n");
+                } else if (attachmentService.isImage(id)) {
+                    context.append(
+                            "This is an image attachment. "
+                    );
+
+                    context.append(
+                            "Image understanding requires "
+                    );
+
+                    context.append(
+                            "a multimodal AI provider."
+                    );
+
+                    context.append("\n");
+                } else {
+                    context.append(
+                            "Binary/document attachment "
+                    );
+
+                    context.append(
+                            "is available for processing."
+                    );
+
+                    context.append("\n");
+                }
+
+            } catch (Exception ignored) {
+                context.append(
+                        "\nAttachment could not be read: "
+                );
+
+                context.append(id);
+
+                context.append("\n");
+            }
+        }
+
+        return context.toString();
+    }
+
+    private String buildAttachmentPrompt(
+            String message,
+            String attachmentContext
+    ) {
+        StringBuilder prompt =
+                new StringBuilder();
 
         if (!message.isBlank()) {
-            result.append(message);
+            prompt.append(message);
         } else {
-            result.append("Analyze the attached files and images.");
+            prompt.append(
+                    "Analyze the provided attachment(s) "
+                            + "and explain the useful information."
+            );
         }
 
-        result.append("\n\n--- ATTACHMENTS ---\n");
+        if (!attachmentContext.isBlank()) {
+            prompt.append(
+                    "\n\nUse the following attachment "
+                            + "information when answering:\n"
+            );
 
-        for (String context : attachmentContext) {
-            result.append(context)
-                    .append("\n\n");
+            prompt.append(
+                    attachmentContext
+            );
         }
 
-        result.append("--- END ATTACHMENTS ---");
-
-        return result.toString();
+        return prompt.toString();
     }
 
-    private List<String> parseAttachmentIds(String value) {
-        if (value == null || value.isBlank()) {
-            return List.of();
+    private String limitText(String value) {
+        if (value == null) {
+            return "";
         }
 
-        return Arrays.stream(value.split(","))
-                .map(String::trim)
-                .filter(id -> !id.isBlank())
-                .filter(id -> id.matches("[a-fA-F0-9\\-]{8,64}"))
-                .distinct()
-                .limit(10)
-                .collect(Collectors.toList());
-    }
+        int max =
+                120_000;
 
-    private String normalizeConversationId(String id) {
-        if (id == null || id.isBlank()) {
-            return conversationService.create();
+        if (value.length() <= max) {
+            return value;
         }
 
-        String clean = id.trim();
-
-        if (!clean.matches("[a-zA-Z0-9_-]{1,100}")) {
-            return conversationService.create();
-        }
-
-        return clean;
+        return value.substring(0, max)
+                + "\n[Attachment text truncated.]";
     }
 
     private String normalizeMode(String mode) {
@@ -272,12 +497,39 @@ public class ChatController {
             return "normal";
         }
 
-        String clean = mode.trim().toLowerCase(Locale.ROOT);
+        String normalized =
+                mode.trim().toLowerCase();
 
-        return switch (clean) {
-            case "normal", "deep", "prime", "research", "coding" -> clean;
-            default -> "normal";
+        return switch (normalized) {
+            case "normal",
+                    "deep",
+                    "prime",
+                    "research" ->
+                    normalized;
+
+            default ->
+                    "normal";
         };
+    }
+
+    private String normalizeConversationId(
+            String conversationId
+    ) {
+        if (conversationId == null
+                || conversationId.isBlank()) {
+            return null;
+        }
+
+        String id =
+                conversationId.trim();
+
+        if (!id.matches("[a-zA-Z0-9_-]+")) {
+            throw new IllegalArgumentException(
+                    "Invalid conversation ID."
+            );
+        }
+
+        return id;
     }
 
     public record ChatRequest(
