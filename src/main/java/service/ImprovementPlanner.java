@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class ImprovementPlanner {
@@ -26,27 +27,32 @@ public class ImprovementPlanner {
         BenchmarkEngine.BenchmarkSummary summary =
                 benchmarkEngine.runAll();
 
+        Map<String, Double> domainScores =
+                summary.domainScores() == null
+                        ? Map.of()
+                        : summary.domainScores();
+
         List<DomainScore> scores =
                 List.of(
-                        new DomainScore(
+                        createDomainScore(
                                 "knowledge",
-                                summary.knowledge().score()
+                                domainScores
                         ),
-                        new DomainScore(
+                        createDomainScore(
                                 "reasoning",
-                                summary.reasoning().score()
+                                domainScores
                         ),
-                        new DomainScore(
+                        createDomainScore(
                                 "research",
-                                summary.research().score()
+                                domainScores
                         ),
-                        new DomainScore(
+                        createDomainScore(
                                 "coding",
-                                summary.coding().score()
+                                domainScores
                         ),
-                        new DomainScore(
+                        createDomainScore(
                                 "memory",
-                                summary.memory().score()
+                                domainScores
                         )
                 );
 
@@ -74,7 +80,10 @@ public class ImprovementPlanner {
             return new ImprovementPlan(
                     weakest.domain(),
                     weakest.score(),
-                    100 - weakest.score(),
+                    Math.max(
+                            0,
+                            100 - weakest.score()
+                    ),
                     1,
                     "Improve the "
                             + weakest.domain()
@@ -107,6 +116,34 @@ public class ImprovementPlanner {
                 ),
                 feature.name(),
                 feature.name()
+        );
+    }
+
+    private DomainScore createDomainScore(
+            String domain,
+            Map<String, Double> domainScores
+    ) {
+
+        double normalized =
+                domainScores.getOrDefault(
+                        domain.toUpperCase(Locale.ROOT),
+                        0.0
+                );
+
+        int percentage =
+                (int) Math.round(
+                        Math.max(
+                                0.0,
+                                Math.min(
+                                        1.0,
+                                        normalized
+                                )
+                        ) * 100.0
+                );
+
+        return new DomainScore(
+                domain,
+                percentage
         );
     }
 
