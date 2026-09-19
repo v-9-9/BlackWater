@@ -2,30 +2,74 @@ package service;
 
 import java.time.Instant;
 
-public class KnowledgeEntry {
-
-    private final String information;
-    private final String source;
-    private final Instant learnedAt;
+public record KnowledgeEntry(
+        String topic,
+        String title,
+        String content,
+        String sourceUrl,
+        String source,
+        double confidence,
+        Instant learnedAt
+) {
 
     public KnowledgeEntry(
-            String information,
+            String topic,
+            String title,
+            String content,
+            String sourceUrl,
+            String source,
+            double confidence
+    ) {
+        this(
+                topic,
+                title,
+                content,
+                sourceUrl,
+                source,
+                confidence,
+                Instant.now()
+        );
+    }
+
+    public KnowledgeEntry(
+            String topic,
+            String title,
+            String content,
+            String sourceUrl,
             String source
     ) {
-        this.information = information;
-        this.source = source;
-        this.learnedAt = Instant.now();
+        this(
+                topic,
+                title,
+                content,
+                sourceUrl,
+                source,
+                0.50,
+                Instant.now()
+        );
     }
 
-    public String getInformation() {
-        return information;
+    public boolean isReliable() {
+        return confidence >= 0.70;
     }
 
-    public String getSource() {
-        return source;
+    public String searchableText() {
+        return (
+                safe(topic)
+                        + " "
+                        + safe(title)
+                        + " "
+                        + safe(content)
+                        + " "
+                        + safe(source)
+        ).trim();
     }
 
-    public Instant getLearnedAt() {
-        return learnedAt;
+    private static String safe(
+            String value
+    ) {
+        return value == null
+                ? ""
+                : value;
     }
 }
