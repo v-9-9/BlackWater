@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 public class ImprovementPlanner {
@@ -16,332 +17,252 @@ public class ImprovementPlanner {
             BenchmarkEngine benchmarkEngine,
             SelfImprovementFeatureBank featureBank
     ) {
-        this.benchmarkEngine =
-                benchmarkEngine;
-
-        this.featureBank =
-                featureBank;
+        this.benchmarkEngine = benchmarkEngine;
+        this.featureBank = featureBank;
     }
 
     public synchronized ImprovementPlan createPlan() {
 
-        List<Capability> capabilities =
-                collectCapabilities();
+        BenchmarkEngine.BenchmarkSummary summary =
+                benchmarkEngine.runAll();
 
-        if (capabilities.isEmpty()) {
-
-            return new ImprovementPlan(
-                    "unknown",
-                    0,
-                    0,
-                    0,
-                    "No benchmark data available.",
-                    List.of(),
-                    null,
-                    ""
-            );
-        }
-
-        Capability target =
-                selectTarget(capabilities);
-
-        if (target == null) {
-
-            return new ImprovementPlan(
-                    "unknown",
-                    0,
-                    0,
-                    0,
-                    "Could not identify an improvement target.",
-                    List.of(),
-                    null,
-                    ""
-            );
-        }
-
-        int gap =
-                Math.max(
-                        0,
-                        100 - target.score()
+        List<DomainScore> scores =
+                List.of(
+                        new DomainScore(
+                                "knowledge",
+                                summary.knowledge().score()
+                        ),
+                        new DomainScore(
+                                "reasoning",
+                                summary.reasoning().score()
+                        ),
+                        new DomainScore(
+                                "research",
+                                summary.research().score()
+                        ),
+                        new DomainScore(
+                                "coding",
+                                summary.coding().score()
+                        ),
+                        new DomainScore(
+                                "memory",
+                                summary.memory().score()
+                        )
                 );
 
-        int difficulty =
-                calculateDifficulty(
-                        target.score()
-                );
+        DomainScore weakest =
+                scores.stream()
+                        .min(
+                                Comparator.comparingInt(
+                                        DomainScore::score
+                                )
+                        )
+                        .orElse(
+                                new DomainScore(
+                                        "knowledge",
+                                        0
+                                )
+                        );
 
         SelfImprovementFeatureBank.Feature feature =
-                selectFeature(
-                        target.domain()
+                getHighestPriorityFeature(
+                        weakest.domain()
                 );
 
-        String topic;
+        if (feature == null) {
 
-        String featureName = "";
-
-        if (feature != null) {
-
-            featureName =
-                    feature.name();
-
-            topic =
-                    buildFeatureResearchTopic(
-                            feature
-                    );
-
-        } else {
-
-            topic =
-                    getTopic(
-                            target.domain(),
-                            difficulty
-                    );
+            return new ImprovementPlan(
+                    weakest.domain(),
+                    weakest.score(),
+                    100 - weakest.score(),
+                    1,
+                    "Improve the "
+                            + weakest.domain()
+                            + " capability.",
+                    getFeaturesForDomain(
+                            weakest.domain()
+                    ),
+                    "",
+                    ""
+            );
         }
 
         return new ImprovementPlan(
-                target.domain(),
-                target.score(),
-                gap,
-                difficulty,
-                topic,
-                capabilities
-                        .stream()
-                        .map(
-                                Capability::domain
-                        )
-                        .toList(),
-                feature,
-                featureName
+                weakest.domain(),
+                weakest.score(),
+                Math.max(
+                        0,
+                        100 - weakest.score()
+                ),
+                Math.max(
+                        1,
+                        feature.priority()
+                ),
+                buildResearchTopic(
+                        weakest.domain(),
+                        feature
+                ),
+                getFeaturesForDomain(
+                        weakest.domain()
+                ),
+                feature.name(),
+                feature.name()
         );
     }
 
-    private List<Capability> collectCapabilities() {
-
-        List<Capability> result =
-                new ArrayList<>();
-
-        addCapability(
-                result,
-                "knowledge"
-        );
-
-        addCapability(
-                result,
-                "reasoning"
-        );
-
-        addCapability(
-                result,
-                "research"
-        );
-
-        addCapability(
-                result,
-                "coding"
-        );
-
-        addCapability(
-                result,
-                "memory"
-        );
-
-        return result;
-    }
-
-    private void addCapability(
-            List<Capability> result,
+    public synchronized SelfImprovementFeatureBank.Feature
+    getHighestPriorityFeature(
             String domain
     ) {
 
-        try {
+        List<SelfImprovementFeatureBank.Feature> features =
+                getFeaturesForDomain(domain);
 
-            BenchmarkEngine.BenchmarkResult benchmark =
-                    benchmarkEngine.run(
-                            domain
-                    );
-
-            result.add(
-                    new Capability(
-                            domain,
-                            benchmark.score()
-                    )
-            );
-
-        } catch (Exception ignored) {
-        }
-    }
-
-    private Capability selectTarget(
-            List<Capability> capabilities
-    ) {
-
-        return capabilities.stream()
-                .min(
-                        Comparator
-                                .comparingInt(
-                                        Capability::score
-                                )
+        return features.stream()
+                .filter(
+                        feature ->
+                                !feature.completed()
+                )
+                .max(
+                        Comparator.comparingInt(
+                                SelfImprovementFeatureBank.Feature
+                                        ::priority
+                        )
                 )
                 .orElse(null);
     }
 
-    private SelfImprovementFeatureBank.Feature selectFeature(
+    public synchronized SelfImprovementFeatureBank.Feature
+    findFeature(
+            String featureName
+    ) {
+
+        return featureBank.find(
+                featureName
+        );
+    }
+
+    public synchronized void markFeatureStarted(
+            String featureName
+    ) {
+
+        if (featureName == null
+                || featureName.isBlank()) {
+            return;
+        }
+
+        featureBank.markStarted(
+                featureName
+        );
+    }
+
+    public synchronized void markFeatureSuccessful(
+            String featureName
+    ) {
+
+        if (featureName == null
+                || featureName.isBlank()) {
+            return;
+        }
+
+        featureBank.markSuccessful(
+                featureName
+        );
+    }
+
+    public synchronized List<
+            SelfImprovementFeatureBank.Feature>
+    getFeaturesForDomain(
             String domain
     ) {
 
-        SelfImprovementFeatureBank.Feature feature =
-                featureBank.getHighestPriority(
-                        domain
-                );
-
-        if (feature != null) {
-            return feature;
+        if (domain == null
+                || domain.isBlank()) {
+            return List.of();
         }
 
-        return featureBank
-                .getHighestPriorityFeatures(1)
-                .stream()
-                .findFirst()
-                .orElse(null);
+        return new ArrayList<>(
+                featureBank.getByDomain(
+                        normalizeDomain(domain)
+                )
+        );
     }
 
-    private String buildFeatureResearchTopic(
+    public synchronized List<
+            SelfImprovementFeatureBank.Feature>
+    getAvailableFeatures() {
+
+        return new ArrayList<>(
+                featureBank.getAll()
+        );
+    }
+
+    public synchronized int totalFeatures() {
+        return featureBank.totalFeatures();
+    }
+
+    public synchronized int completedFeatures() {
+        return featureBank.completedFeatures();
+    }
+
+    public synchronized String previewPlan() {
+
+        ImprovementPlan plan =
+                createPlan();
+
+        return """
+                Target domain: %s
+                Current score: %d
+                Gap: %d
+                Difficulty: %d
+                Feature: %s
+                Research topic: %s
+                """
+                .formatted(
+                        plan.targetDomain(),
+                        plan.currentScore(),
+                        plan.gap(),
+                        plan.difficulty(),
+                        plan.featureName(),
+                        plan.researchTopic()
+                )
+                .trim();
+    }
+
+    private String buildResearchTopic(
+            String domain,
             SelfImprovementFeatureBank.Feature feature
     ) {
 
         return """
-                Research how to implement the following Blackwater capability.
+                Research how to safely improve Blackwater's
+                %s capability.
 
-                Capability:
-                %s
-
-                Domain:
+                Feature:
                 %s
 
                 Description:
                 %s
 
-                Priority:
-                %d
-
-                The research should identify:
-                - required backend changes
-                - required frontend changes
-                - required dependencies
-                - security considerations
-                - testing requirements
-                - compatibility risks
-                - a safe implementation approach
-                """.formatted(
-                feature.name(),
-                feature.domain(),
-                feature.description(),
-                feature.priority()
-        ).trim();
+                Focus on practical implementation,
+                architecture, testing, security,
+                regression prevention and measurable improvement.
+                """
+                .formatted(
+                        normalizeDomain(domain),
+                        feature.name(),
+                        feature.description()
+                )
+                .trim();
     }
 
-    private int calculateDifficulty(
-            int score
-    ) {
-
-        if (score < 20) {
-            return 1;
-        }
-
-        if (score < 40) {
-            return 2;
-        }
-
-        if (score < 60) {
-            return 3;
-        }
-
-        if (score < 80) {
-            return 4;
-        }
-
-        return 5;
-    }
-
-    private String getTopic(
-            String domain,
-            int difficulty
-    ) {
-
-        return switch (domain) {
-
-            case "knowledge" ->
-                    "Improve knowledge retrieval, "
-                            + "verification and deduplication "
-                            + "at difficulty "
-                            + difficulty;
-
-            case "reasoning" ->
-                    "Improve multi-step reasoning, "
-                            + "verification and problem solving "
-                            + "at difficulty "
-                            + difficulty;
-
-            case "research" ->
-                    "Improve multi-source web research, "
-                            + "source comparison and verification "
-                            + "at difficulty "
-                            + difficulty;
-
-            case "coding" ->
-                    "Improve code generation, analysis, "
-                            + "testing and safe code evolution "
-                            + "at difficulty "
-                            + difficulty;
-
-            case "memory" ->
-                    "Improve long-term memory, relevance, "
-                            + "consolidation and recall "
-                            + "at difficulty "
-                            + difficulty;
-
-            default ->
-                    "Improve Blackwater capabilities "
-                            + "at difficulty "
-                            + difficulty;
-        };
-    }
-
-    public synchronized List<SelfImprovementFeatureBank.Feature>
-    getAvailableFeatures() {
-
-        return featureBank.getAll();
-    }
-
-    public synchronized List<SelfImprovementFeatureBank.Feature>
-    getFeaturesForDomain(
+    private String normalizeDomain(
             String domain
     ) {
 
-        return featureBank.getByDomain(
-                domain
-        );
-    }
-
-    public synchronized int totalFeatures() {
-
-        return featureBank.totalFeatures();
-    }
-
-    public synchronized int completedFeatures() {
-
-        return featureBank.completedFeatures();
-    }
-
-    public synchronized ImprovementPlan previewPlan() {
-
-        return createPlan();
-    }
-
-    public record Capability(
-            String domain,
-            int score
-    ) {
+        return domain
+                .trim()
+                .toLowerCase(Locale.ROOT);
     }
 
     public record ImprovementPlan(
@@ -350,9 +271,17 @@ public class ImprovementPlanner {
             int gap,
             int difficulty,
             String researchTopic,
-            List<String> availableDomains,
-            SelfImprovementFeatureBank.Feature feature,
+            List<
+                    SelfImprovementFeatureBank.Feature>
+                    availableDomains,
+            String feature,
             String featureName
+    ) {
+    }
+
+    private record DomainScore(
+            String domain,
+            int score
     ) {
     }
 }
