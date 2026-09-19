@@ -11,6 +11,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,25 +24,24 @@ public class EvolutionEngine {
     private static final Path LOG_FILE =
             Path.of("blackwater-evolution-log.txt");
 
-    private static final long DEFAULT_POWER = 0;
-
     private final LearningEngine learningEngine;
+    private final BenchmarkEngine benchmarkEngine;
 
     private final Map<Domain, DomainState> domains =
             new EnumMap<>(Domain.class);
 
     private boolean running = false;
 
-    private long totalPower =
-            DEFAULT_POWER;
+    private long totalPower = 0;
 
     private long evolutionCycles = 0;
 
     public EvolutionEngine(
-            LearningEngine learningEngine
+            LearningEngine learningEngine,
+            BenchmarkEngine benchmarkEngine
     ) {
-        this.learningEngine =
-                learningEngine;
+        this.learningEngine = learningEngine;
+        this.benchmarkEngine = benchmarkEngine;
 
         initializeDomains();
         loadState();
@@ -86,10 +86,7 @@ public class EvolutionEngine {
             return;
         }
 
-        DomainState state =
-                domains.get(parsed);
-
-        state.enabled =
+        domains.get(parsed).enabled =
                 enabled;
 
         saveState();
@@ -107,10 +104,7 @@ public class EvolutionEngine {
             return;
         }
 
-        DomainState state =
-                domains.get(parsed);
-
-        state.priority =
+        domains.get(parsed).priority =
                 Math.max(
                         0,
                         Math.min(
@@ -125,7 +119,7 @@ public class EvolutionEngine {
     public synchronized EvolutionSnapshot getStatus() {
 
         Map<String, DomainSnapshot> result =
-                new java.util.LinkedHashMap<>();
+                new LinkedHashMap<>();
 
         for (Domain domain :
                 Domain.values()) {
@@ -139,7 +133,8 @@ public class EvolutionEngine {
                             state.enabled,
                             state.priority,
                             state.power,
-                            state.cycles
+                            state.cycles,
+                            state.lastBenchmark
                     )
             );
         }
@@ -156,8 +151,7 @@ public class EvolutionEngine {
 
         if (!running) {
 
-            return
-                    "Evolution is paused.";
+            return "Evolution is paused.";
         }
 
         DomainState target =
@@ -169,92 +163,85 @@ public class EvolutionEngine {
                     "No evolution domains are enabled.";
         }
 
-        String result =
-                evolveDomain(
-                        target
-                );
-
-        evolutionCycles++;
-
-        saveState();
-
-        return result;
+        return evolveDomain(target);
     }
 
     private String evolveDomain(
             DomainState state
     ) {
 
-        /*
-         * This is the safe foundation of the
-         * self-improvement system.
-         *
-         * Later benchmark engines will replace
-         * the temporary learning action with
-         * measurable tests.
-         */
-
-        String topic =
-                switch (state.domain) {
-
-                    case KNOWLEDGE ->
-                            "knowledge retrieval and information quality";
-
-                    case REASONING ->
-                            "reasoning and logical problem solving";
-
-                    case RESEARCH ->
-                            "web research and source verification";
-
-                    case CODING ->
-                            "software development and programming";
-
-                    case MEMORY ->
-                            "memory retrieval and context management";
-                };
-
         long oldPower =
                 state.power;
 
-        String result;
+        int oldBenchmark =
+                state.lastBenchmark;
+
+        String topic =
+                getEvolutionTopic(
+                        state.domain
+                );
+
+        String learningResult;
 
         try {
 
-            result =
+            learningResult =
                     learningEngine.learn(
                             topic
                     );
 
         } catch (Exception e) {
 
-            result =
-                    "Evolution attempt failed: "
+            learningResult =
+                    "Learning failed: "
                             + e.getMessage();
         }
 
+        BenchmarkEngine.BenchmarkResult benchmark;
+
+        try {
+
+            benchmark =
+                    benchmarkEngine.run(
+                            state.domain
+                                    .name()
+                    );
+
+        } catch (Exception e) {
+
+            benchmark =
+                    new BenchmarkEngine.BenchmarkResult(
+                            state.domain
+                                    .name()
+                                    .toLowerCase(),
+                            0,
+                            0,
+                            List.of(
+                                    "Benchmark failed."
+                            )
+                    );
+        }
+
+        int newBenchmark =
+                benchmark.score();
+
+        state.lastBenchmark =
+                newBenchmark;
+
+        long gain =
+                calculatePowerGain(
+                        state,
+                        oldBenchmark,
+                        newBenchmark
+                );
+
         /*
-         * Temporary conservative growth.
-         *
-         * Real benchmark-based Power changes
-         * will be added in the next stages.
+         * Power only increases when the benchmark
+         * actually improves or when the system
+         * successfully establishes a new capability.
          */
 
-        boolean useful =
-                result != null
-                        && !result.isBlank()
-                        && !result.contains(
-                                "No information"
-                        )
-                        && !result.contains(
-                                "not useful"
-                        );
-
-        if (useful) {
-
-            long gain =
-                    calculateTemporaryGain(
-                            state
-                    );
+        if (gain > 0) {
 
             state.power += gain;
 
@@ -262,19 +249,23 @@ public class EvolutionEngine {
 
             state.cycles++;
 
+            evolutionCycles++;
+
             writeLog(
                     "+"
                             + gain
                             + " "
                             + state.domain.name()
                             + " Power | "
-                            + "Previous: "
-                            + oldPower
-                            + " | New: "
-                            + state.power
+                            + "Benchmark "
+                            + oldBenchmark
+                            + " → "
+                            + newBenchmark
                             + " | "
-                            + result
+                            + learningResult
             );
+
+            saveState();
 
             return
                     "Evolution successful."
@@ -287,45 +278,111 @@ public class EvolutionEngine {
                             + " → "
                             + state.power
                             + System.lineSeparator()
+                            + "Benchmark: "
+                            + oldBenchmark
+                            + " → "
+                            + newBenchmark
+                            + System.lineSeparator()
                             + "Gain: +"
                             + gain;
         }
 
-        writeLog(
-                "No measurable improvement in "
-                        + state.domain.name()
-        );
-
-        return
-                "No measurable improvement.";
-    }
-
-    private long calculateTemporaryGain(
-            DomainState state
-    ) {
-
         /*
-         * Priority affects how strongly this
-         * domain is selected and how much it
-         * can gain during the temporary phase.
-         *
-         * This will later be replaced by
-         * benchmark-based scoring.
+         * No improvement.
          */
 
+        state.cycles++;
+
+        evolutionCycles++;
+
+        writeLog(
+                "No Power increase | "
+                        + state.domain.name()
+                        + " | Benchmark "
+                        + oldBenchmark
+                        + " → "
+                        + newBenchmark
+        );
+
+        saveState();
+
+        return
+                "Evolution cycle completed."
+                        + System.lineSeparator()
+                        + "Domain: "
+                        + state.domain.name()
+                        + System.lineSeparator()
+                        + "Benchmark: "
+                        + newBenchmark
+                        + "/100"
+                        + System.lineSeparator()
+                        + "Power unchanged.";
+    }
+
+    private long calculatePowerGain(
+            DomainState state,
+            int oldBenchmark,
+            int newBenchmark
+    ) {
+
+        int improvement =
+                newBenchmark
+                        - oldBenchmark;
+
+        if (improvement <= 0) {
+
+            return 0;
+        }
+
+        /*
+         * Priority affects how strongly an
+         * improvement contributes to Power.
+         */
+
+        long gain =
+                Math.max(
+                        1,
+                        improvement / 5
+                );
+
         if (state.priority >= 90) {
-            return 5;
+
+            gain += 2;
+
+        } else if (state.priority >= 70) {
+
+            gain += 1;
         }
 
-        if (state.priority >= 70) {
-            return 4;
-        }
+        return gain;
+    }
 
-        if (state.priority >= 40) {
-            return 3;
-        }
+    private String getEvolutionTopic(
+            Domain domain
+    ) {
 
-        return 2;
+        return switch (domain) {
+
+            case KNOWLEDGE ->
+                    "advanced knowledge retrieval, "
+                            + "fact verification and information quality";
+
+            case REASONING ->
+                    "logical reasoning, "
+                            + "problem solving and inference";
+
+            case RESEARCH ->
+                    "web research, "
+                            + "source discovery and source verification";
+
+            case CODING ->
+                    "software engineering, "
+                            + "programming, debugging and code quality";
+
+            case MEMORY ->
+                    "memory retrieval, "
+                            + "context management and information recall";
+        };
     }
 
     private DomainState selectNextDomain() {
@@ -385,15 +442,11 @@ public class EvolutionEngine {
                             true,
                             50,
                             0,
+                            0,
                             0
                     )
             );
         }
-
-        /*
-         * Default priority:
-         * Coding receives the highest priority.
-         */
 
         domains.get(
                 Domain.CODING
@@ -471,6 +524,13 @@ public class EvolutionEngine {
                                 + ".cycles="
                                 + state.cycles
                 );
+
+                lines.add(
+                        "domain."
+                                + domain.name()
+                                + ".benchmark="
+                                + state.lastBenchmark
+                );
             }
 
             Files.write(
@@ -492,6 +552,7 @@ public class EvolutionEngine {
         )) {
 
             saveState();
+
             return;
         }
 
@@ -503,7 +564,8 @@ public class EvolutionEngine {
                             StandardCharsets.UTF_8
                     );
 
-            for (String line : lines) {
+            for (String line :
+                    lines) {
 
                 if (line.startsWith(
                         "running="
@@ -521,7 +583,7 @@ public class EvolutionEngine {
                     totalPower =
                             parseLong(
                                     valueOf(line),
-                                    DEFAULT_POWER
+                                    0
                             );
 
                 } else if (line.startsWith(
@@ -536,9 +598,7 @@ public class EvolutionEngine {
 
                 } else {
 
-                    loadDomainValue(
-                            line
-                    );
+                    loadDomainValue(line);
                 }
             }
 
@@ -602,6 +662,16 @@ public class EvolutionEngine {
 
                 state.cycles =
                         parseLong(
+                                valueOf(line),
+                                0
+                        );
+
+            } else if (line.endsWith(
+                    ".benchmark"
+            )) {
+
+                state.lastBenchmark =
+                        (int) parseLong(
                                 valueOf(line),
                                 0
                         );
@@ -688,18 +758,23 @@ public class EvolutionEngine {
 
         private long cycles;
 
+        private int lastBenchmark;
+
         private DomainState(
                 Domain domain,
                 boolean enabled,
                 int priority,
                 long power,
-                long cycles
+                long cycles,
+                int lastBenchmark
         ) {
             this.domain = domain;
             this.enabled = enabled;
             this.priority = priority;
             this.power = power;
             this.cycles = cycles;
+            this.lastBenchmark =
+                    lastBenchmark;
         }
     }
 
@@ -707,7 +782,8 @@ public class EvolutionEngine {
             boolean enabled,
             int priority,
             long power,
-            long cycles
+            long cycles,
+            int lastBenchmark
     ) {
     }
 
