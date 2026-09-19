@@ -3,583 +3,466 @@ package service;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 @Service
 public class BenchmarkEngine {
 
-    private final KnowledgeService knowledgeService;
+    private final BenchmarkHistory history;
     private final LearningEngine learningEngine;
     private final AIService aiService;
-    private final BenchmarkTaskBank taskBank;
-    private final BenchmarkHistory benchmarkHistory;
+    private final KnowledgeService knowledgeService;
+    private final ImprovementSandbox sandbox;
 
     public BenchmarkEngine(
-            KnowledgeService knowledgeService,
+            BenchmarkHistory history,
             LearningEngine learningEngine,
             AIService aiService,
-            BenchmarkTaskBank taskBank,
-            BenchmarkHistory benchmarkHistory
+            KnowledgeService knowledgeService,
+            ImprovementSandbox sandbox
     ) {
-        this.knowledgeService = knowledgeService;
+        this.history = history;
         this.learningEngine = learningEngine;
         this.aiService = aiService;
-        this.taskBank = taskBank;
-        this.benchmarkHistory = benchmarkHistory;
+        this.knowledgeService = knowledgeService;
+        this.sandbox = sandbox;
     }
 
-    public synchronized BenchmarkResult run(
-            String domain
-    ) {
-
-        if (domain == null
-                || domain.isBlank()) {
-
-            return new BenchmarkResult(
-                    "unknown",
-                    0,
-                    0,
-                    List.of(
-                            "No domain specified."
-                    )
-            );
-        }
-
-        String normalized =
-                domain.trim()
-                        .toLowerCase(Locale.ROOT);
-
-        return switch (normalized) {
-
-            case "knowledge" ->
-                    runAITaskBenchmark(
-                            "knowledge"
-                    );
-
-            case "reasoning" ->
-                    runAITaskBenchmark(
-                            "reasoning"
-                    );
-
-            case "coding" ->
-                    runAITaskBenchmark(
-                            "coding"
-                    );
-
-            case "research" ->
-                    runResearchBenchmark();
-
-            case "memory" ->
-                    runMemoryBenchmark();
-
-            default ->
-                    new BenchmarkResult(
-                            normalized,
-                            0,
-                            0,
-                            List.of(
-                                    "Unknown benchmark domain."
-                            )
-                    );
-        };
+    public BenchmarkResult run(String domain) {
+        return run(domain, null);
     }
 
-    private BenchmarkResult runAITaskBenchmark(
-            String domain
+    public BenchmarkResult run(
+            String domain,
+            String experimentId
     ) {
+        String normalized = normalizeDomain(domain);
 
         List<BenchmarkTaskBank.BenchmarkTask> tasks =
-                taskBank.getTasks(domain);
+                BenchmarkTaskBank.getTasks(normalized);
 
         if (tasks.isEmpty()) {
-
             return new BenchmarkResult(
-                    domain,
+                    normalized,
+                    0.0,
                     0,
                     0,
-                    List.of(
-                            "No benchmark tasks available."
-                    )
+                    experimentId
             );
         }
 
-        double earnedPoints = 0;
-        double maximumPoints = 0;
+        List<Double> scores = new ArrayList<>();
+
+        for (BenchmarkTaskBank.BenchmarkTask task : tasks) {
+            try {
+                double score =
+                        evaluateTask(
+                                normalized,
+                                task,
+                                experimentId
+                        );
+
+                scores.add(clamp(score));
+            } catch (Exception e) {
+                scores.add(0.0);
+            }
+        }
+
+        double average =
+                scores.stream()
+                        .mapToDouble(Double::doubleValue)
+                        .average()
+                        .orElse(0.0);
 
         int passed = 0;
 
-        List<String> details =
-                new ArrayList<>();
-
-        for (
-                BenchmarkTaskBank.BenchmarkTask task :
-                tasks
-        ) {
-
-            int difficulty =
-                    Math.max(
-                            1,
-                            task.difficulty()
-                    );
-
-            double points =
-                    difficulty;
-
-            maximumPoints += points;
-
-            String response;
-
-            try {
-
-                response =
-                        aiService.generate(
-                                task.prompt(),
-                                "swift",
-                                null
-                        );
-
-            } catch (Exception e) {
-
-                details.add(
-                        "Execution failed: "
-                                + task.prompt()
-                );
-
-                continue;
-            }
-
-            if (matchesExpected(
-                    response,
-                    task.expected()
-            )) {
-
-                earnedPoints += points;
+        for (double score : scores) {
+            if (score >= 0.70) {
                 passed++;
-
-                details.add(
-                        "Passed [D"
-                                + difficulty
-                                + "]: "
-                                + task.prompt()
-                );
-
-            } else {
-
-                details.add(
-                        "Failed [D"
-                                + difficulty
-                                + "]: "
-                                + task.prompt()
-                );
             }
         }
 
-        int score =
-                maximumPoints <= 0
-                        ? 0
-                        : (int) Math.round(
-                                (
-                                        earnedPoints
-                                                / maximumPoints
-                                ) * 100
-                        );
-
-        details.add(
-                "Passed: "
-                        + passed
-                        + "/"
-                        + tasks.size()
-        );
-
-        details.add(
-                "Weighted score: "
-                        + score
-                        + "/100"
-        );
-
         return new BenchmarkResult(
+                normalized,
+                average,
+                passed,
+                tasks.size(),
+                experimentId
+        );
+    }
+
+    public BenchmarkSummary runAll() {
+        Map<String, Double> domainScores =
+                new LinkedHashMap<>();
+
+        for (String domain : supportedDomains()) {
+            BenchmarkResult result = run(domain);
+            domainScores.put(domain, result.averageScore());
+        }
+
+        double average =
+                domainScores.values()
+                        .stream()
+                        .mapToDouble(Double::doubleValue)
+                        .average()
+                        .orElse(0.0);
+
+        history.record(
+                average,
+                domainScores
+        );
+
+        return new BenchmarkSummary(
+                average,
+                domainScores
+        );
+    }
+
+    public BenchmarkHistory getHistoryService() {
+        return history;
+    }
+
+    private double evaluateTask(
+            String domain,
+            BenchmarkTaskBank.BenchmarkTask task,
+            String experimentId
+    ) {
+        String prompt = buildBenchmarkPrompt(
                 domain,
-                Math.max(
-                        0,
-                        Math.min(
-                                100,
-                                score
-                        )
-                ),
-                tasks.size(),
-                details
+                task,
+                experimentId
         );
-    }
 
-    private BenchmarkResult runResearchBenchmark() {
+        String answer;
 
-        List<BenchmarkTaskBank.BenchmarkTask> tasks =
-                taskBank.getTasks(
-                        "research"
-                );
+        switch (domain) {
+            case "RESEARCH" -> {
+                try {
+                    LearningEngine.ResearchResult result =
+                            learningEngine.research(task.prompt());
 
-        if (tasks.isEmpty()) {
+                    if (result == null) {
+                        return 0.0;
+                    }
 
-            return new BenchmarkResult(
-                    "research",
-                    0,
-                    0,
-                    List.of(
-                            "No research tasks available."
-                    )
-            );
-        }
+                    String researchText =
+                            buildResearchEvaluationText(result);
 
-        double earnedPoints = 0;
-        double maximumPoints = 0;
-
-        int passed = 0;
-
-        List<String> details =
-                new ArrayList<>();
-
-        for (
-                BenchmarkTaskBank.BenchmarkTask task :
-                tasks
-        ) {
-
-            int difficulty =
-                    Math.max(
-                            1,
-                            task.difficulty()
+                    return evaluateExpected(
+                            researchText,
+                            task.expected()
                     );
-
-            maximumPoints += difficulty;
-
-            String result;
-
-            try {
-
-                result =
-                        learningEngine.learn(
-                                task.prompt()
-                        );
-
-            } catch (Exception e) {
-
-                details.add(
-                        "Research failed: "
-                                + task.prompt()
-                );
-
-                continue;
+                } catch (Exception e) {
+                    return 0.0;
+                }
             }
 
-            boolean useful =
-                    result != null
-                            && !result.isBlank()
-                            && !result.contains(
-                                    "No information"
-                            )
-                            && !result.contains(
-                                    "not useful"
-                            );
-
-            if (!useful) {
-
-                details.add(
-                        "Research failed [D"
-                                + difficulty
-                                + "]: "
-                                + task.prompt()
-                );
-
-                continue;
+            case "MEMORY" -> {
+                return evaluateMemoryTask(task);
             }
 
-            boolean knowledgeAvailable;
-
-            try {
-
-                knowledgeAvailable =
-                        !knowledgeService
-                                .search(
-                                        task.expected()
-                                                .getFirst()
-                                )
-                                .isEmpty();
-
-            } catch (Exception e) {
-
-                knowledgeAvailable = false;
+            case "KNOWLEDGE" -> {
+                return evaluateKnowledgeTask(task);
             }
 
-            if (knowledgeAvailable) {
-
-                earnedPoints += difficulty;
-                passed++;
-
-                details.add(
-                        "Research passed [D"
-                                + difficulty
-                                + "]: "
-                                + task.prompt()
-                );
-
-            } else {
-
-                details.add(
-                        "Research completed but "
-                                + "verification failed: "
-                                + task.prompt()
+            default -> {
+                answer = aiService.generate(
+                        prompt,
+                        "prime",
+                        null
                 );
             }
         }
 
-        int score =
-                maximumPoints <= 0
-                        ? 0
-                        : (int) Math.round(
-                                (
-                                        earnedPoints
-                                                / maximumPoints
-                                ) * 100
-                        );
-
-        details.add(
-                "Passed: "
-                        + passed
-                        + "/"
-                        + tasks.size()
-        );
-
-        return new BenchmarkResult(
-                "research",
-                Math.max(
-                        0,
-                        Math.min(
-                                100,
-                                score
-                        )
-                ),
-                tasks.size(),
-                details
+        return evaluateExpected(
+                answer,
+                task.expected()
         );
     }
 
-    private BenchmarkResult runMemoryBenchmark() {
+    private String buildBenchmarkPrompt(
+            String domain,
+            BenchmarkTaskBank.BenchmarkTask task,
+            String experimentId
+    ) {
+        StringBuilder prompt = new StringBuilder();
 
-        List<BenchmarkTaskBank.BenchmarkTask> tasks =
-                taskBank.getTasks(
-                        "memory"
-                );
+        prompt.append("""
+                You are being evaluated by Blackwater's internal benchmark.
 
-        if (tasks.isEmpty()) {
+                Answer the task accurately and directly.
 
-            return new BenchmarkResult(
-                    "memory",
-                    0,
-                    0,
-                    List.of(
-                            "No memory tasks available."
-                    )
-            );
+                Do not claim that you performed actions you did not perform.
+                Do not invent sources, test results, files, or facts.
+                Prefer correctness over verbosity.
+
+                DOMAIN:
+                """);
+
+        prompt.append(domain);
+
+        if (experimentId != null && !experimentId.isBlank()) {
+            prompt.append("""
+
+                    
+                    SANDBOX EXPERIMENT:
+                    """);
+            prompt.append(experimentId);
+
+            prompt.append("""
+                    
+                    
+                    The experiment may contain a proposed code improvement.
+                    Evaluate the task while considering the implementation represented
+                    by the experiment when relevant.
+                    """);
         }
 
-        int score = 0;
+        prompt.append("\n\nTASK:\n");
+        prompt.append(task.prompt());
 
-        List<String> details =
-                new ArrayList<>();
-
-        long knowledgeCount = 0;
-
-        try {
-
-            knowledgeCount =
-                    knowledgeService.count();
-
-        } catch (Exception ignored) {
-        }
-
-        if (knowledgeCount > 0) {
-
-            score += 50;
-
-            details.add(
-                    "Persistent information exists."
-            );
-
-        } else {
-
-            details.add(
-                    "No persistent knowledge exists."
-            );
-        }
-
-        try {
-
-            List<String> recent =
-                    knowledgeService.getRecent(5);
-
-            if (!recent.isEmpty()) {
-
-                score += 50;
-
-                details.add(
-                        "Stored information can be recalled."
-                );
-
-            } else {
-
-                details.add(
-                        "Stored information could not be recalled."
-                );
-            }
-
-        } catch (Exception e) {
-
-            details.add(
-                    "Recall test failed."
-            );
-        }
-
-        return new BenchmarkResult(
-                "memory",
-                Math.min(
-                        100,
-                        score
-                ),
-                tasks.size(),
-                details
-        );
+        return prompt.toString();
     }
 
-    private boolean matchesExpected(
-            String response,
+    private double evaluateExpected(
+            String answer,
             List<String> expected
     ) {
-
-        if (response == null
-                || response.isBlank()
-                || expected == null
-                || expected.isEmpty()) {
-
-            return false;
+        if (answer == null || answer.isBlank()) {
+            return 0.0;
         }
 
-        String normalizedResponse =
-                response
-                        .toLowerCase(
-                                Locale.ROOT
-                        )
-                        .replaceAll(
-                                "[^\\p{L}\\p{N}+.#_-]+",
-                                " "
-                        )
-                        .trim();
+        if (expected == null || expected.isEmpty()) {
+            return 0.5;
+        }
 
-        for (String expectedValue :
-                expected) {
+        String normalizedAnswer =
+                normalize(answer);
 
+        int matched = 0;
+
+        for (String expectedValue : expected) {
             if (expectedValue == null
                     || expectedValue.isBlank()) {
                 continue;
             }
 
             String normalizedExpected =
-                    expectedValue
-                            .toLowerCase(
-                                    Locale.ROOT
-                            )
-                            .trim();
+                    normalize(expectedValue);
 
-            if (normalizedResponse.contains(
-                    normalizedExpected
-            )) {
+            if (normalizedExpected.isBlank()) {
+                continue;
+            }
 
-                return true;
+            if (normalizedAnswer.contains(normalizedExpected)) {
+                matched++;
             }
         }
 
-        return false;
-    }
-
-    public synchronized BenchmarkSummary runAll() {
-
-        BenchmarkResult knowledge =
-                run(
-                        "knowledge"
-                );
-
-        BenchmarkResult reasoning =
-                run(
-                        "reasoning"
-                );
-
-        BenchmarkResult research =
-                run(
-                        "research"
-                );
-
-        BenchmarkResult coding =
-                run(
-                        "coding"
-                );
-
-        BenchmarkResult memory =
-                run(
-                        "memory"
-                );
-
-        int total =
-                knowledge.score()
-                        + reasoning.score()
-                        + research.score()
-                        + coding.score()
-                        + memory.score();
-
-        int average =
-                total / 5;
-
-        BenchmarkSummary summary =
-                new BenchmarkSummary(
-                        average,
-                        knowledge,
-                        reasoning,
-                        research,
-                        coding,
-                        memory
-                );
-
-        try {
-
-            benchmarkHistory.record(
-                    summary
-            );
-
-        } catch (Exception ignored) {
+        if (matched == 0) {
+            return 0.0;
         }
 
-        return summary;
+        return Math.min(
+                1.0,
+                (double) matched / expected.size()
+        );
     }
 
-    public synchronized BenchmarkHistory
-    getHistoryService() {
+    private double evaluateKnowledgeTask(
+            BenchmarkTaskBank.BenchmarkTask task
+    ) {
+        if (knowledgeService.count() <= 0) {
+            return 0.0;
+        }
 
-        return benchmarkHistory;
+        String query = task.prompt();
+
+        List<KnowledgeEntry> results =
+                knowledgeService.search(query);
+
+        if (results == null || results.isEmpty()) {
+            return 0.0;
+        }
+
+        double averageConfidence =
+                results.stream()
+                        .limit(5)
+                        .mapToDouble(KnowledgeEntry::confidence)
+                        .average()
+                        .orElse(0.0);
+
+        double relevance =
+                Math.min(
+                        1.0,
+                        results.size() / 5.0
+                );
+
+        return clamp(
+                (averageConfidence * 0.60)
+                        + (relevance * 0.40)
+        );
+    }
+
+    private double evaluateMemoryTask(
+            BenchmarkTaskBank.BenchmarkTask task
+    ) {
+        if (knowledgeService.count() <= 0) {
+            return 0.0;
+        }
+
+        List<KnowledgeEntry> recent =
+                knowledgeService.recent(10);
+
+        if (recent == null || recent.isEmpty()) {
+            return 0.0;
+        }
+
+        String query =
+                normalize(task.prompt());
+
+        int relevant = 0;
+
+        for (KnowledgeEntry entry : recent) {
+            if (entry == null) {
+                continue;
+            }
+
+            String searchable =
+                    normalize(entry.searchableText());
+
+            if (containsUsefulTerms(query, searchable)) {
+                relevant++;
+            }
+        }
+
+        if (relevant == 0) {
+            return 0.0;
+        }
+
+        return Math.min(
+                1.0,
+                0.40 + (relevant * 0.15)
+        );
+    }
+
+    private boolean containsUsefulTerms(
+            String query,
+            String searchable
+    ) {
+        if (query.isBlank() || searchable.isBlank()) {
+            return false;
+        }
+
+        String[] words =
+                query.split("\\s+");
+
+        int useful = 0;
+
+        for (String word : words) {
+            if (word.length() < 3) {
+                continue;
+            }
+
+            if (searchable.contains(word)) {
+                useful++;
+            }
+        }
+
+        return useful >= Math.max(
+                1,
+                Math.min(3, words.length / 4)
+        );
+    }
+
+    private String buildResearchEvaluationText(
+            LearningEngine.ResearchResult result
+    ) {
+        StringBuilder text = new StringBuilder();
+
+        if (result.sources() != null) {
+            for (ResearchEngine.SourceResult source :
+                    result.sources()) {
+
+                if (source == null) {
+                    continue;
+                }
+
+                text.append(source.title())
+                        .append(" ")
+                        .append(source.content())
+                        .append(" ")
+                        .append(source.source())
+                        .append(" ")
+                        .append(source.url())
+                        .append("\n");
+            }
+        }
+
+        if (result.gaps() != null) {
+            text.append("\nGAPS:\n");
+
+            for (String gap : result.gaps()) {
+                text.append(gap).append("\n");
+            }
+        }
+
+        return text.toString();
+    }
+
+    private String normalizeDomain(String domain) {
+        if (domain == null || domain.isBlank()) {
+            return "CODING";
+        }
+
+        String normalized =
+                domain.trim()
+                        .toUpperCase(Locale.ROOT)
+                        .replace('-', '_')
+                        .replace(' ', '_');
+
+        return switch (normalized) {
+            case "KNOWLEDGE" -> "KNOWLEDGE";
+            case "REASONING" -> "REASONING";
+            case "RESEARCH" -> "RESEARCH";
+            case "CODING", "CODE", "PROGRAMMING" -> "CODING";
+            case "MEMORY" -> "MEMORY";
+            default -> "CODING";
+        };
+    }
+
+    private double clamp(double value) {
+        return Math.max(
+                0.0,
+                Math.min(1.0, value)
+        );
+    }
+
+    private List<String> supportedDomains() {
+        return List.of(
+                "KNOWLEDGE",
+                "REASONING",
+                "RESEARCH",
+                "CODING",
+                "MEMORY"
+        );
     }
 
     public record BenchmarkResult(
             String domain,
-            int score,
-            int testsCompleted,
-            List<String> details
+            double averageScore,
+            int passedTasks,
+            int totalTasks,
+            String experimentId
     ) {
     }
 
     public record BenchmarkSummary(
-            int averageScore,
-            BenchmarkResult knowledge,
-            BenchmarkResult reasoning,
-            BenchmarkResult research,
-            BenchmarkResult coding,
-            BenchmarkResult memory
+            double averageScore,
+            Map<String, Double> domainScores
     ) {
     }
 }
