@@ -46,29 +46,16 @@ public class ResearchEngine {
                 normalize(question);
 
         List<String> queries =
-                buildQueries(
-                        cleanQuestion
-                );
+                buildQueries(cleanQuestion);
 
         List<SourceResult> collected =
                 new ArrayList<>();
 
-        /*
-         * First research pass.
-         */
         collected.addAll(
-                runParallelSearch(
-                        queries
-                )
+                runParallelSearch(queries)
         );
 
-        /*
-         * If the first pass is weak,
-         * generate additional searches locally.
-         */
-        if (isWeakResearch(
-                collected
-        )) {
+        if (isWeakResearch(collected)) {
 
             List<String> secondaryQueries =
                     buildSecondaryQueries(
@@ -90,9 +77,7 @@ public class ResearchEngine {
                 );
 
         String context =
-                buildContext(
-                        finalResults
-                );
+                buildContext(finalResults);
 
         List<String> gaps =
                 detectGaps(
@@ -110,12 +95,6 @@ public class ResearchEngine {
         );
     }
 
-    /*
-     * ============================================================
-     * QUERY GENERATION
-     * ============================================================
-     */
-
     private List<String> buildQueries(
             String question
     ) {
@@ -125,48 +104,30 @@ public class ResearchEngine {
 
         queries.add(question);
 
-        /*
-         * Exact question.
-         */
         queries.add(
                 "\"" + question + "\""
         );
 
-        /*
-         * General factual research.
-         */
         queries.add(
-                question
-                        + " explanation facts"
+                question + " explanation facts"
         );
 
-        /*
-         * Verification-focused search.
-         */
         queries.add(
-                question
-                        + " evidence sources"
+                question + " evidence sources"
         );
 
-        /*
-         * Technical questions.
-         */
         if (looksTechnical(question)) {
 
             queries.add(
-                    question
-                            + " documentation"
+                    question + " documentation"
             );
 
             queries.add(
-                    question
-                            + " github implementation"
+                    question + " github implementation"
             );
         }
 
-        return limitQueries(
-                queries
-        );
+        return limitQueries(queries);
     }
 
     private List<String> buildSecondaryQueries(
@@ -178,47 +139,35 @@ public class ResearchEngine {
                 new LinkedHashSet<>();
 
         queries.add(
-                question
-                        + " latest information"
+                question + " latest information"
         );
 
         queries.add(
-                question
-                        + " official documentation"
+                question + " official documentation"
         );
 
         queries.add(
-                question
-                        + " independent sources"
+                question + " independent sources"
         );
 
         if (looksTechnical(question)) {
 
             queries.add(
-                    question
-                            + " stackoverflow"
+                    question + " stackoverflow"
             );
 
             queries.add(
-                    question
-                            + " github"
+                    question + " github"
             );
 
             queries.add(
-                    question
-                            + " examples"
+                    question + " examples"
             );
         }
 
-        /*
-         * Search based on the strongest sources
-         * already discovered.
-         */
         existing.stream()
                 .limit(5)
-                .map(
-                        SourceResult::title
-                )
+                .map(SourceResult::title)
                 .filter(
                         title ->
                                 title != null
@@ -233,9 +182,7 @@ public class ResearchEngine {
                                 )
                 );
 
-        return limitQueries(
-                queries
-        );
+        return limitQueries(queries);
     }
 
     private List<String> limitQueries(
@@ -243,24 +190,14 @@ public class ResearchEngine {
     ) {
 
         return queries.stream()
-                .map(
-                        this::normalize
-                )
+                .map(this::normalize)
                 .filter(
                         query ->
                                 !query.isBlank()
                 )
-                .limit(
-                        MAX_QUERIES
-                )
+                .limit(MAX_QUERIES)
                 .toList();
     }
-
-    /*
-     * ============================================================
-     * PARALLEL SEARCH
-     * ============================================================
-     */
 
     private List<SourceResult> runParallelSearch(
             List<String> queries
@@ -280,9 +217,7 @@ public class ResearchEngine {
                                         CompletableFuture
                                                 .supplyAsync(
                                                         () ->
-                                                                safeSearch(
-                                                                        query
-                                                                ),
+                                                                safeSearch(query),
                                                         executor
                                                 )
                         )
@@ -306,9 +241,7 @@ public class ResearchEngine {
                         )
                 );
 
-            } catch (
-                    InterruptedException e
-            ) {
+            } catch (InterruptedException e) {
 
                 Thread.currentThread()
                         .interrupt();
@@ -329,22 +262,36 @@ public class ResearchEngine {
 
         try {
 
-            return webKnowledgeCollector
-                    .search(
+            List<WebKnowledgeCollector.SourceResult>
+                    rawResults =
+                    webKnowledgeCollector.search(
                             query
                     );
+
+            if (rawResults == null
+                    || rawResults.isEmpty()) {
+                return List.of();
+            }
+
+            return rawResults.stream()
+                    .filter(Objects::nonNull)
+                    .map(
+                            result ->
+                                    new SourceResult(
+                                            result.source(),
+                                            result.title(),
+                                            result.content(),
+                                            result.url(),
+                                            result.confidence()
+                                    )
+                    )
+                    .toList();
 
         } catch (Exception ignored) {
 
             return List.of();
         }
     }
-
-    /*
-     * ============================================================
-     * SOURCE RANKING
-     * ============================================================
-     */
 
     private List<SourceResult> rankAndDeduplicate(
             List<SourceResult> results,
@@ -354,8 +301,7 @@ public class ResearchEngine {
         Map<String, SourceResult> unique =
                 new LinkedHashMap<>();
 
-        for (SourceResult result :
-                results) {
+        for (SourceResult result : results) {
 
             if (result == null) {
                 continue;
@@ -372,37 +318,21 @@ public class ResearchEngine {
             }
 
             String key =
-                    normalizeKey(
-                            result
-                                    .url()
-                    );
+                    normalizeKey(result.url());
 
             SourceResult previous =
-                    unique.get(
-                            key
-                    );
+                    unique.get(key);
 
             if (previous == null
-                    || quality(
-                            result,
-                            question
-                    )
-                    > quality(
-                            previous,
-                            question
-                    )) {
+                    || quality(result, question)
+                    > quality(previous, question)) {
 
-                unique.put(
-                        key,
-                        result
-                );
+                unique.put(key, result);
             }
         }
 
         List<SourceResult> sorted =
-                new ArrayList<>(
-                        unique.values()
-                );
+                new ArrayList<>(unique.values());
 
         sorted.sort(
                 Comparator
@@ -416,8 +346,7 @@ public class ResearchEngine {
                         .reversed()
         );
 
-        if (sorted.size()
-                > MAX_RESULTS) {
+        if (sorted.size() > MAX_RESULTS) {
 
             return new ArrayList<>(
                     sorted.subList(
@@ -439,54 +368,28 @@ public class ResearchEngine {
                 result.confidence();
 
         String source =
-                safeLower(
-                        result.source()
-                );
+                safeLower(result.source());
 
         String title =
-                safeLower(
-                        result.title()
-                );
+                safeLower(result.title());
 
         String content =
-                safeLower(
-                        result.content()
-                );
+                safeLower(result.content());
 
         String q =
-                safeLower(
-                        question
-                );
+                safeLower(question);
 
-        /*
-         * Official / technical sources.
-         */
         if (
-                source.contains(
-                        "official"
-                )
-                || source.contains(
-                        "mdn"
-                )
-                || source.contains(
-                        "github"
-                )
-                || source.contains(
-                        "stackoverflow"
-                )
-                || source.contains(
-                        "wikipedia"
-                )
-                || source.contains(
-                        "arxiv"
-                )
+                source.contains("official")
+                || source.contains("mdn")
+                || source.contains("github")
+                || source.contains("stackoverflow")
+                || source.contains("wikipedia")
+                || source.contains("arxiv")
         ) {
             score += 0.12;
         }
 
-        /*
-         * Query relevance.
-         */
         for (
                 String token :
                 meaningfulTokens(q)
@@ -501,9 +404,6 @@ public class ResearchEngine {
             }
         }
 
-        /*
-         * Penalize extremely short results.
-         */
         if (content.length() < 100) {
             score -= 0.10;
         }
@@ -514,12 +414,6 @@ public class ResearchEngine {
 
         return score;
     }
-
-    /*
-     * ============================================================
-     * RESEARCH QUALITY
-     * ============================================================
-     */
 
     private boolean isWeakResearch(
             List<SourceResult> results
@@ -532,12 +426,8 @@ public class ResearchEngine {
 
         long sources =
                 results.stream()
-                        .map(
-                                SourceResult::source
-                        )
-                        .filter(
-                                Objects::nonNull
-                        )
+                        .map(SourceResult::source)
+                        .filter(Objects::nonNull)
                         .map(
                                 value ->
                                         value.toLowerCase(
@@ -576,12 +466,8 @@ public class ResearchEngine {
 
         long sourceCount =
                 results.stream()
-                        .map(
-                                SourceResult::source
-                        )
-                        .filter(
-                                Objects::nonNull
-                        )
+                        .map(SourceResult::source)
+                        .filter(Objects::nonNull)
                         .distinct()
                         .count();
 
@@ -621,12 +507,6 @@ public class ResearchEngine {
         return gaps;
     }
 
-    /*
-     * ============================================================
-     * CONTEXT BUILDER
-     * ============================================================
-     */
-
     private String buildContext(
             List<SourceResult> results
     ) {
@@ -649,48 +529,25 @@ public class ResearchEngine {
             SourceResult result =
                     results.get(i);
 
+            context.append("\nSOURCE ");
+            context.append(i + 1);
+
+            context.append("\nProvider: ");
             context.append(
-                    "\nSOURCE "
+                    safe(result.source())
             );
 
+            context.append("\nTitle: ");
             context.append(
-                    i + 1
+                    safe(result.title())
             );
 
+            context.append("\nURL: ");
             context.append(
-                    "\nProvider: "
+                    safe(result.url())
             );
 
-            context.append(
-                    safe(
-                            result.source()
-                    )
-            );
-
-            context.append(
-                    "\nTitle: "
-            );
-
-            context.append(
-                    safe(
-                            result.title()
-                    )
-            );
-
-            context.append(
-                    "\nURL: "
-            );
-
-            context.append(
-                    safe(
-                            result.url()
-                    )
-            );
-
-            context.append(
-                    "\nConfidence: "
-            );
-
+            context.append("\nConfidence: ");
             context.append(
                     String.format(
                             Locale.US,
@@ -699,19 +556,12 @@ public class ResearchEngine {
                     )
             );
 
+            context.append("\nContent:\n");
             context.append(
-                    "\nContent:\n"
+                    safe(result.content())
             );
 
-            context.append(
-                    safe(
-                            result.content()
-                    )
-            );
-
-            context.append(
-                    "\n\n"
-            );
+            context.append("\n\n");
 
             if (
                     context.length()
@@ -721,30 +571,21 @@ public class ResearchEngine {
             }
         }
 
-        return context
-                .substring(
-                        0,
-                        Math.min(
-                                context.length(),
-                                MAX_CONTEXT_LENGTH
-                        )
-                );
+        return context.substring(
+                0,
+                Math.min(
+                        context.length(),
+                        MAX_CONTEXT_LENGTH
+                )
+        );
     }
-
-    /*
-     * ============================================================
-     * TOPIC DETECTION
-     * ============================================================
-     */
 
     private boolean looksTechnical(
             String text
     ) {
 
         String value =
-                safeLower(
-                        text
-                );
+                safeLower(text);
 
         String[] keywords = {
                 "code",
@@ -772,6 +613,7 @@ public class ResearchEngine {
                 "css",
                 "json",
                 "docker",
+                "kubernetes",
                 "linux",
                 "android",
                 "algorithm",
@@ -792,12 +634,9 @@ public class ResearchEngine {
             String... terms
     ) {
 
-        for (String term :
-                terms) {
+        for (String term : terms) {
 
-            if (value.contains(
-                    term
-            )) {
+            if (value.contains(term)) {
                 return true;
             }
         }
@@ -813,9 +652,7 @@ public class ResearchEngine {
                 .compile(
                         "[\\p{L}\\p{N}]{3,}"
                 )
-                .matcher(
-                        text
-                )
+                .matcher(text)
                 .results()
                 .map(
                         match ->
@@ -828,19 +665,11 @@ public class ResearchEngine {
                                 )
                 )
                 .distinct()
-                .limit(
-                        20
-                )
+                .limit(20)
                 .collect(
                         Collectors.toList()
                 );
     }
-
-    /*
-     * ============================================================
-     * HELPERS
-     * ============================================================
-     */
 
     private String normalize(
             String value
@@ -870,9 +699,7 @@ public class ResearchEngine {
         }
 
         return url
-                .toLowerCase(
-                        Locale.ROOT
-                )
+                .toLowerCase(Locale.ROOT)
                 .replaceAll(
                         "[?#].*$",
                         ""
@@ -896,11 +723,8 @@ public class ResearchEngine {
             String value
     ) {
 
-        return safe(
-                value
-        ).toLowerCase(
-                Locale.ROOT
-        );
+        return safe(value)
+                .toLowerCase(Locale.ROOT);
     }
 
     private static final Set<String>
@@ -946,12 +770,6 @@ public class ResearchEngine {
                     "هذا",
                     "هذه"
             );
-
-    /*
-     * ============================================================
-     * RESULT TYPES
-     * ============================================================
-     */
 
     public record ResearchResult(
             String question,
