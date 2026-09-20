@@ -10,74 +10,53 @@ public class EvolutionController {
 
     private final EvolutionEngine evolutionEngine;
 
-    public EvolutionController(
-            EvolutionEngine evolutionEngine
-    ) {
-        this.evolutionEngine =
-                evolutionEngine;
+    public EvolutionController(EvolutionEngine evolutionEngine) {
+        this.evolutionEngine = evolutionEngine;
     }
 
     @GetMapping
-    public EvolutionEngine.EvolutionSnapshot status() {
-
-        return evolutionEngine.getStatus();
+    public EvolutionEngine.EvolutionState status() {
+        return evolutionEngine.getState();
     }
 
     @PostMapping("/start")
-    public EvolutionEngine.EvolutionSnapshot start() {
-
+    public EvolutionEngine.EvolutionState start() {
         evolutionEngine.start();
-
-        return evolutionEngine.getStatus();
+        return evolutionEngine.getState();
     }
 
     @PostMapping("/pause")
-    public EvolutionEngine.EvolutionSnapshot pause() {
-
+    public EvolutionEngine.EvolutionState pause() {
         evolutionEngine.pause();
-
-        return evolutionEngine.getStatus();
+        return evolutionEngine.getState();
     }
 
     @PostMapping("/resume")
-    public EvolutionEngine.EvolutionSnapshot resume() {
-
-        evolutionEngine.start();
-
-        return evolutionEngine.getStatus();
+    public EvolutionEngine.EvolutionState resume() {
+        evolutionEngine.resume();
+        return evolutionEngine.getState();
     }
 
     @PostMapping("/cycle")
-    public String evolveOnce() {
-
+    public EvolutionEngine.EvolutionCycle evolveOnce() {
         return evolutionEngine.evolveOnce();
     }
 
     @PostMapping("/domain")
-    public EvolutionEngine.EvolutionSnapshot setDomain(
+    public EvolutionEngine.EvolutionState setDomain(
             @RequestParam String name,
             @RequestParam boolean enabled
     ) {
-
-        evolutionEngine.setDomainEnabled(
-                name,
-                enabled
-        );
-
-        return evolutionEngine.getStatus();
+        evolutionEngine.setDomainEnabled(name, enabled);
+        return evolutionEngine.getState();
     }
 
     @PostMapping("/priority")
-    public EvolutionEngine.EvolutionSnapshot setPriority(
+    public EvolutionEngine.EvolutionState setPriority(
             @RequestParam String name,
             @RequestParam int value
     ) {
-
-        evolutionEngine.setPriority(
-                name,
-                value
-        );
-
-        return evolutionEngine.getStatus();
+        evolutionEngine.setPriority(name, value);
+        return evolutionEngine.getState();
     }
 }
