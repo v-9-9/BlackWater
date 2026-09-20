@@ -1,6 +1,7 @@
 package controller;
 
 import org.springframework.web.bind.annotation.*;
+import service.KnowledgeEntry;
 import service.KnowledgeService;
 
 import java.util.List;
@@ -17,7 +18,7 @@ public class KnowledgeController {
     }
 
     @GetMapping("/search")
-    public List<String> search(@RequestParam String q) {
+    public List<KnowledgeEntry> search(@RequestParam String q) {
         return knowledgeService.search(q);
     }
 
