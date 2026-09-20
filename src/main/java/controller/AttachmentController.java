@@ -71,8 +71,7 @@ public class AttachmentController {
                             ? MediaType.APPLICATION_OCTET_STREAM_VALUE
                             : info.contentType();
 
-            HttpHeaders headers =
-                    new HttpHeaders();
+            HttpHeaders headers = new HttpHeaders();
 
             headers.setContentType(
                     MediaType.parseMediaType(contentType)
@@ -95,9 +94,7 @@ public class AttachmentController {
                             )
                             .build();
 
-            headers.setContentDisposition(
-                    disposition
-            );
+            headers.setContentDisposition(disposition);
 
             return ResponseEntity
                     .ok()
@@ -204,19 +201,7 @@ public class AttachmentController {
             @PathVariable String id
     ) {
         try {
-            boolean deleted =
-                    attachmentService.delete(id);
-
-            if (!deleted) {
-                return ResponseEntity
-                        .notFound()
-                        .body(
-                                Map.of(
-                                        "error",
-                                        "Attachment not found."
-                                )
-                        );
-            }
+            attachmentService.delete(id);
 
             return ResponseEntity.ok(
                     Map.of(
